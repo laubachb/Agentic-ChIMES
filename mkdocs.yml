@@ -68,12 +68,14 @@ nav:
       - fm-setup-gen: commands/fm-setup-gen.md
       - amat-build: commands/amat-build.md
       - solve: commands/solve.md
-      - evaluate: commands/evaluate.md
-      - submit: commands/submit.md
+      - model-build: commands/model-build.md
       - dataset-select: commands/dataset-select.md
-      - qe-relabel: commands/qe-relabel.md
       - sweep: commands/sweep.md
+      - evaluate: commands/evaluate.md
       - lammps-run: commands/lammps-run.md
+      - qe-relabel: commands/qe-relabel.md
+      - submit: commands/submit.md
+      - al-run: commands/al-run.md
       - al-select: commands/al-select.md
   - Tutorial: tutorials/end_to_end_holdout_study.md
 

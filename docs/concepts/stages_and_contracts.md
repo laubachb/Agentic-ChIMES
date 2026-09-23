@@ -91,13 +91,12 @@ agent (or a human) figures out a stage's contract without reading source.
 
 ## Phasing
 
-This repo is being built incrementally; not every stage in the command
-table has real logic yet. Stages not yet implemented still register a real
-subcommand (`--describe` works, flags parse, `--json-in`/`--json-out`
-work) whose `run()` just echoes its parsed input back — see
-`stages/_stub.py`. This means the CLI surface a caller (human or agent)
-depends on is stable from Phase 0 onward; swapping a stub's `run()` for
-real logic in a later phase never changes how the stage is invoked.
+This repo was built incrementally. Stages not yet implemented still
+register a real subcommand (`--describe` works, flags parse,
+`--json-in`/`--json-out` work) whose `run()` just echoes its parsed input
+back — see `stages/_stub.py`. This means the CLI surface a caller (human
+or agent) depends on has been stable since Phase 0; swapping a stub's
+`run()` for real logic never changes how the stage is invoked.
 
 Build order, and why:
 
@@ -110,33 +109,50 @@ Build order, and why:
    against real golden fixtures already in the repos
    (`test_suite-lsq/*/fm_setup.in`, `serial_interface/tests/`) with zero
    HPC dependency. Proving the stage/manifest/JSON-contract abstraction
-   here, before writing any Slurm-touching code, means a wrong abstraction
-   is cheap to fix.
-3. **HPC layer** (`hpc/slurm.py`, `submit`, the DLARS/dlasso path in
-   `solve` with the cliff monitor) — the highest-blast-radius part (wrong
-   flags waste allocation), done once the surrounding stage contract is
-   already proven stable. The DLARS cliff-detection log parser
-   (`stages/_cliff_monitor.py`) is deliberately pure log-parsing with zero
-   Slurm dependency, so it's unit-tested against synthetic log fixtures
-   *before* it's wired to a live solve.
-4. **Dataset tooling + LAMMPS + sweep** — additive, don't touch the
-   QM-driver registry.
-5. **QE driver** — the `QMDriver` registry lands first (with the existing
-   VASP/CP2K/DFTB+/Gaussian drivers migrated to it as thin adapters, low
-   risk since their underlying logic is untouched), then `qe.py` as the
-   first genuinely new driver proving the registry against a 5th real
-   implementation rather than only the 4 it was reverse-engineered from.
-6. **AL selection + CI + docs polish.**
+   here, before writing any Slurm-touching code, meant a wrong abstraction
+   would be cheap to fix.
+3. **HPC submission layer** (`hpc/slurm.py`, `submit`) — the
+   highest-blast-radius part (wrong flags waste allocation), done once the
+   surrounding stage contract was already proven stable. The DLARS
+   cliff-detection log parser (`stages/_cliff_monitor.py`) is deliberately
+   pure log-parsing with zero Slurm dependency, unit-tested against
+   synthetic log fixtures — built ahead of, and still not yet wired into,
+   a live `solve --algorithm dlars` submission (`amat-build`/`solve`
+   remain local-only; this is the one piece of the original plan not done).
+4. **Dataset tooling + LAMMPS + sweep + model-build** — `dataset-select`
+   (FPS/random/stratified), `lammps-run` (validated three ways: standalone
+   `chimescalc` binary, ctypes evaluator, and LAMMPS all agree on the same
+   published reference to ~1e-3), `sweep` (2b/3b/4b order × cutoffs ×
+   alpha/algorithm grid), and `model-build` (amat-build+solve composed).
+5. **QE relabeling** — `qe-relabel` + `converters/qe2xyzf.py`, implemented
+   directly rather than through an abstract QM-driver registry (QE was the
+   only new code being added; see `docs/concepts/qm_driver_plugins.md` for
+   the registry design kept on file for *if* a second QM code joins later).
+6. **`al-run`** — launches al_driver's own `main.py` as a detached
+   background process (see below), rather than reimplementing its
+   orchestration. `al-select` (a standalone wrapper around al_driver's
+   diversity-selection logic, for use outside a full driver cycle) remains
+   a stub.
 
-## Why not al_driver's loop directly
+## Why not al_driver's loop directly — and where `al-run` fits
 
 al_driver's active-learning loop is real, working orchestration logic —
-`gen_ff.py`, `qm_driver.py`, `run_md.py`, `gen_selections.py` all get
-reused (wrapped, not rewritten) by later phases here. What it isn't is
-agent-callable: `main.py` is a single ~1300-line function that blocks for
-days, polls `squeue` with `time.sleep(60)`, and has no JSON output anywhere
-— only prints and flat files. Turning "build a ChIMES model" into something
-a coding agent can drive one decision at a time means factoring that loop
-into the discrete, structured-I/O stages described above, and *not*
-building a second autonomous loop on top (see the repo's confirmed design
-stance: tool-calling CLI, not a closed-loop orchestrator).
+`gen_ff.py`, `qm_driver.py`, `run_md.py`, `gen_selections.py` are reused
+(wrapped, not rewritten) by `hpc/slurm.py` and (via `al-run`) `main.py`
+itself. What it isn't, on its own, is agent-callable: `main.py` is a
+single ~1300-line function that blocks for days, polls `squeue` with
+`time.sleep(60)`, and has no JSON output anywhere — only prints and flat
+files. The discrete, structured-I/O stages in this repo are what let a
+coding agent drive "build a ChIMES model" one decision at a time, and
+that's still the primary interface — this repo does not build a *second*
+autonomous loop layered on top of them.
+
+`al-run` is not that second loop. It's a thin, correct wrapper for the
+case where a human or agent has already decided to run al_driver's real
+loop as-is (an explicit, deliberate choice, not something any other stage
+triggers automatically) — it launches `main.py` detached and returns
+immediately, rather than blocking the caller for days. The discrete stages
+remain how you'd build and iterate on a single model; `al-run` is how you
+kick off a full multi-cycle active-learning campaign once you've decided
+that's what you want, using al_driver's own tested orchestration for it
+rather than a reimplementation.

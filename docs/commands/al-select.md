@@ -1,8 +1,13 @@
 # `chimes-agent al-select`
 
-**Status: planned (Phase 5), not yet implemented.** The subcommand exists
-today as a stub (`stages/al_select.py`) that echoes its parsed input —
-`--describe` works, the CLI contract below is fixed.
+**Status: planned, not yet implemented.** The subcommand exists today as a
+stub (`stages/al_select.py`) that echoes its parsed input — `--describe`
+works, the CLI contract below is fixed. If you want active learning today,
+see [`al-run`](al-run.md), which launches al_driver's *full* loop
+(including its own diversity selection internally via `gen_selections.py`)
+rather than exposing selection as a standalone step — `al-select` here
+would be for calling that same selection logic on its own, outside a full
+driver cycle.
 
 ## Intent
 

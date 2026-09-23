@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased — dataset/QE/sweep/LAMMPS/active-learning iteration
+
+- **`model-build`** (new): amat-build then solve composed into one call.
+- **`dataset-select`**: real FPS (greedy farthest-point sampling, composition
+  and/or per-atom-energy descriptor, z-score standardized) / random /
+  stratified-holdout (by composition class, every class represented in
+  both splits) implementations, replacing the echo stub. 8 unit tests
+  against a synthetic pool (disjointness/completeness, determinism,
+  descriptor coverage, error handling) -- no `codes/` dependency, runs in CI.
+- **`sweep`**: real grid-sweep engine composing fm-setup-gen + model-build +
+  evaluate, with independently sweepable `order_2b`/`order_3b`/`order_4b`
+  (a `null`/`0` 4-body entry omits the term, matching fm-setup-gen's own
+  convention), `default_s_minim`/`default_s_maxim`, `alpha`, and
+  `algorithm`. Writes a CSV + `best_by` pointers (not auto-tuning -- a
+  table to look at). Validated with a real 4-point grid against the same
+  bundled fixture the quickstart uses.
+- **`lammps-run`**: real single-point/MD implementation
+  (`io/lammps_data.py`'s data-file writer + LAMMPS input templating +
+  dump/thermo-log parsing). Cross-validated three ways against a published
+  reference force field: the standalone `chimescalc` binary, the ctypes
+  evaluator, and LAMMPS itself all agree to ~1e-3 on the same
+  energy/forces -- a genuine correctness check, not just "it ran."
+- **`qe-relabel`** (new, was a stub): `converters/qe2xyzf.py` parses real
+  `pw.x` stdout (energy, forces) with correct Rydberg->kcal/mol and
+  Ry/bohr->hartree/bohr unit conversions (new `RY_TO_EV`/`RY_TO_HARTREE`
+  constants in `converters/units.py`), validated against a hand-crafted
+  realistic fixture with independently hand-computed expected values.
+  `stages/qe_relabel.py` generates `pw.in`, submits one combined Slurm job
+  across selected frames (dry-run validated, including the Dane
+  `--ntasks-per-node` guardrail), and `--collect` merges finished output
+  back onto the original structure into a labeled `.xyzf`, reporting
+  converged/not-converged/missing/parse-failed per frame. Scope: 
+  single-point SCF only (no relax/vc-relax geometry re-parsing).
+- **`al-run`** (new): launches al_driver's own `main.py` as a properly
+  detached (session-leader, nohup-style) background process, with
+  `--status-of`/`--stop` PID management -- does not reimplement AL
+  orchestration, correctly calls the existing driver. Deliberately minimal
+  scope: expects an already-prepared al_driver study (`ALL_BASE_FILES/` +
+  `config.py`, as al_driver's own examples show); does not generate
+  `config.py` from scratch. `docs/concepts/qm_driver_plugins.md` updated
+  to reflect that the originally-planned QM-driver registry was not needed
+  for QE (implemented directly instead) and is kept on file only for if a
+  second QM code is added later.
+- 28 new unit tests across `test_dataset_select.py`, `test_lammps_run.py`,
+  `test_qe2xyzf.py`, `test_qe_relabel.py`, `test_al_run.py` (52 total, up
+  from 19) -- all pass, including two real end-to-end integration tests
+  (evaluate + LAMMPS) against a published reference force field, and one
+  real dry-run + synthetic-collect round trip for qe-relabel.
+- Found and fixed two real bugs during this pass: `qe-relabel`'s dry-run
+  path required `pw.x` to already be built (defeats the point of
+  dry-run) and duplicated the machine profile's `module load` line
+  (`hpc.submit_job` already adds it) -- both fixed and now regression-tested.
+
 ## 0.1.0 — initial scaffold (Phases 0–1, partial 2)
 
 - Repo scaffold: `src/agentic_chimes/` package, `chimes-agent` CLI entry

@@ -24,6 +24,12 @@ HARTREE_PER_BOHR_TO_EV_PER_ANG = 51.4221
 # interface example: stress * 6.9479 = GPa).
 CHIMES_STRESS_TO_GPA = 6.9479
 
+# Quantum ESPRESSO native units: energies in Rydberg, forces in Ry/bohr
+# (QE's "Ry/au" == Ry/bohr; QE lengths are natively in bohr, so no length
+# conversion is needed for forces -- only the energy-unit half of Ry).
+RY_TO_EV = 13.605693009  # CODATA: 1 Ry = 13.605693009 eV (= half a Hartree)
+RY_TO_HARTREE = 0.5  # 1 Hartree = 2 Ry, exactly
+
 
 def ev_to_kcal_per_mol(x):
     return x * EV_TO_KCAL_PER_MOL
@@ -39,3 +45,11 @@ def ev_per_ang_to_hartree_per_bohr(x):
 
 def hartree_per_bohr_to_ev_per_ang(x):
     return x * HARTREE_PER_BOHR_TO_EV_PER_ANG
+
+
+def ry_to_kcal_per_mol(x):
+    return ev_to_kcal_per_mol(x * RY_TO_EV)
+
+
+def ry_per_bohr_to_hartree_per_bohr(x):
+    return x * RY_TO_HARTREE

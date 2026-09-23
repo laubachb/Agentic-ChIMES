@@ -29,11 +29,13 @@ STAGE_MODULE_NAMES = [
     "fm_setup_gen",
     "amat_build",
     "solve",
+    "model_build",
     "sweep",
     "evaluate",
     "lammps_run",
     "submit",
     "al_select",
+    "al_run",
 ]
 
 

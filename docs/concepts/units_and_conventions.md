@@ -11,11 +11,14 @@ is a one-line fix, not a hunt through every stage.
 | Force | kcal/mol/Å (fit convention) | some upstream tooling (`vasp2xyzf.py`) instead targets hartree/bohr — `qe2xyzf.py` must be explicit about which one it writes |
 | Force (hartree/bohr) | — | `HARTREE_PER_BOHR_TO_EV_PER_ANG = 51.4221` (product of Hartree→eV and Bohr→Å) |
 | Stress (ctypes return) | ChIMES-internal | `CHIMES_STRESS_TO_GPA = 6.9479` to convert; note the `chimescalc` standalone binary's own printed "Stress tensors (GPa)" output is already converted, so no further scaling is needed there |
+| QE energy (Rydberg) | — | `RY_TO_EV = 13.605693009` (1 Ry = half a Hartree); chain with `EV_TO_KCAL_PER_MOL` via `ry_to_kcal_per_mol()` |
+| QE force (Ry/bohr, i.e. "Ry/au") | — | `RY_TO_HARTREE = 0.5` exactly — QE's native length unit is already bohr, so converting Ry/bohr → hartree/bohr needs *only* the energy-unit half, via `ry_per_bohr_to_hartree_per_bohr()` |
 
-DFT codes (VASP, QE) natively report eV and eV/Å; always convert
-explicitly at the point where a `.xyzf` file is written, and say which
-convention (kcal/mol/Å vs hartree/bohr) that file uses in the stage that
-produced it.
+DFT codes (VASP, QE) natively report eV/Ry and eV/Å or Ry/bohr; always
+convert explicitly at the point where a `.xyzf` file is written, and say
+which convention (kcal/mol/Å vs hartree/bohr) that file uses in the stage
+that produced it. `converters/qe2xyzf.py` targets kcal/mol energy +
+hartree/bohr forces, matching `vasp2xyzf.py`'s contract exactly.
 
 ## Guardrails baked in as defaults, not opt-in flags
 

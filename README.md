@@ -181,18 +181,20 @@ job. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contra
 | `fm-setup-gen` | **implemented** | Generate `fm_setup.in` from typed parameters (elements, cutoffs, order, fit flags) |
 | `amat-build` | **implemented** (local only) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
 | `solve` | **implemented** (svd/ridge/lassolars/...; dlars/dlasso pending HPC layer) | Solve for `params.txt` |
+| `model-build` | **implemented** | Complete build: amat-build then solve, sequentially |
+| `dataset-select` | **implemented** | FPS / random / stratified-holdout sampling |
+| `sweep` | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm + comparison table (not auto-tuning) |
 | `evaluate` | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |
+| `lammps-run` | **implemented** (local) | Single-point/MD via the ChIMES-patched LAMMPS build |
+| `qe-relabel` | **implemented** | Submit Quantum ESPRESSO single-point jobs; `--collect` converts output to `.xyzf` |
 | `submit` | **implemented** | Generic Slurm submit/status/cancel/dry-run |
-| `dataset-select` | planned (Phase 3) | FPS / holdout-split sampling |
-| `sweep` | planned (Phase 3) | Grid sweep over hyperparameters + comparison table (not auto-tuning) |
-| `lammps-run` | planned (Phase 3) | Single-point/MD via the ChIMES-patched LAMMPS build |
-| `qe-relabel` | planned (Phase 4) | Submit Quantum ESPRESSO jobs; convert output to `.xyzf` |
-| `al-select` | planned (Phase 5) | Diversity-based active-learning batch selection |
+| `al-run` | **implemented** | Launch al_driver's own active-learning loop (`main.py`) as a detached background process |
+| `al-select` | planned | Diversity-based active-learning batch selection (wraps `gen_selections.py`) |
 
-Stages marked "planned" already register a real subcommand (`--describe`
-works, the CLI contract is fixed) that echoes its parsed input — swap the
-stub for real logic without changing how callers invoke it. See the
-phasing rationale in [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md#phasing).
+The one remaining stub (`al-select`) already registers a real subcommand
+(`--describe` works, the CLI contract is fixed) that echoes its parsed
+input — swap the stub for real logic without changing how callers invoke
+it. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md#phasing).
 
 ---
 
