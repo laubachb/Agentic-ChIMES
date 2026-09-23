@@ -62,6 +62,7 @@ nav:
       - concepts/machine_profiles.md
       - concepts/qm_driver_plugins.md
       - concepts/units_and_conventions.md
+      - concepts/cutoffs_and_lambdas.md
   - Commands:
       - commands/index.md
       - setup: commands/setup.md
@@ -69,6 +70,7 @@ nav:
       - amat-build: commands/amat-build.md
       - solve: commands/solve.md
       - model-build: commands/model-build.md
+      - auto-build: commands/auto-build.md
       - dataset-select: commands/dataset-select.md
       - sweep: commands/sweep.md
       - evaluate: commands/evaluate.md

@@ -43,7 +43,7 @@ SCHEMA = {
     "properties": {
         "base": {
             "type": "object",
-            "description": "Shared fm-setup-gen + solve parameters (trjfile, nframes, elements, masses, charges, pair_cutoffs, morse_lambda, default_s_minim, default_s_maxim, default_morse_lambda, s_delta, wraptrj, nlayers, fitcoul, fitstrs, fitener, fitpovr, chbtype, fcuttyp, exclude_3b, exclude_4b, algorithm, alpha, eps, weights, folds, max_frames) -- see fm-setup-gen/solve/evaluate --describe.",
+            "description": "Shared fm-setup-gen + solve parameters (trjfile, nframes, elements, masses, charges, pair_cutoffs, morse_lambda, default_s_minim, default_s_maxim, default_morse_lambda, s_delta, wraptrj, nlayers, fitcoul, fitstrs, fitener, fitpovr, chbtype, fcuttyp, exclude_3b, exclude_4b, special_maxim_3b, special_maxim_4b, special_blocks, algorithm, alpha, eps, weights, folds, max_frames) -- see fm-setup-gen/solve/evaluate --describe.",
         },
         "grid": {
             "type": "object",
@@ -105,6 +105,9 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
         fcuttyp=base.get("fcuttyp", "CUBIC"),
         exclude_3b=base.get("exclude_3b"),
         exclude_4b=base.get("exclude_4b"),
+        special_maxim_3b=base.get("special_maxim_3b"),
+        special_maxim_4b=base.get("special_maxim_4b"),
+        special_blocks=base.get("special_blocks"),
         cheby_range=base.get("cheby_range", [-1, 1]),
         output_dir=str(point_dir),
     )

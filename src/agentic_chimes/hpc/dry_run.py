@@ -19,6 +19,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+def hours_to_slurm_time(hours: float) -> str:
+    """Slurm's -t/--time wants HH:MM:SS (or a similar qualified format) --
+    a bare decimal like "1.0" is NOT valid Slurm time syntax (a bare
+    number is parsed as *minutes*, and Slurm rejects the decimal point
+    regardless), so every walltime_hours value must go through this
+    before reaching sbatch."""
+    if hours <= 0:
+        raise ValueError(f"walltime_hours must be positive, got {hours}")
+    total_seconds = round(hours * 3600)
+    h, remainder = divmod(total_seconds, 3600)
+    m, s = divmod(remainder, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
 @dataclass
 class RenderedJob:
     script: str
@@ -59,7 +73,7 @@ def render_sbatch_script(
     ]
     if job_mem_gb and profile.job_system == "UM-ARC":
         sbatch_flags.append(f"--mem-per-cpu={int(job_mem_gb / ntasks_per_node)}G")
-    sbatch_flags.append(f"-t {walltime_hours}")
+    sbatch_flags.append(f"-t {hours_to_slurm_time(walltime_hours)}")
     sbatch_flags.append(f"-p {partition}")
     if email:
         sbatch_flags.append("--mail-type=ALL")

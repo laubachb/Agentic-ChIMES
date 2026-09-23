@@ -2,10 +2,15 @@
 
 This walks through the same shape of study as prior hand-rolled ChIMES
 campaigns with this toolchain (holdout split → fit → solve → evaluate →
-LAMMPS validate), using `chimes-agent` end to end. It mixes stages that are
-implemented today with a couple that are still stubs (marked below) so the
-full intended shape of a study is visible even before every piece lands —
-skip the stubbed steps or substitute your own script for now.
+LAMMPS validate), using `chimes-agent` end to end, one stage at a time so
+you can see and adjust each intermediate result. If you'd rather run the
+whole thing in one call with cutoffs/λ/order chosen automatically from
+your data, see [`auto-build`](../commands/auto-build.md) instead — this
+tutorial is for when you want to drive (or understand) each step yourself.
+
+Only `al-select` (standalone diversity selection outside a full AL cycle)
+remains a stub among the stages below — everything else described here is
+implemented.
 
 Assumes `chimes-agent setup --machine dane --component all` has already
 been run (or at least `chimes_lsq` + `chimes_calculator`).
@@ -13,18 +18,19 @@ been run (or at least `chimes_lsq` + `chimes_calculator`).
 ## 1. Prepare labeled data
 
 You need a `.xyzf` file (ChIMES training format — see `io/xyzf.py`) with
-reference forces (and, if fitting energy, per-frame energies). If your
-labeled data instead comes from raw VASP/QE output, that conversion is
-`contrib/vasp2xyzf.py` (vendored, Python 2) today, or `chimes-agent
-qe-relabel --collect ...` once implemented (**stub today** — see
-`docs/commands/qe-relabel.md`).
+reference forces (and, if fitting energy, per-frame energies). From raw
+VASP output, that conversion is `contrib/vasp2xyzf.py` (vendored, Python
+2); from Quantum ESPRESSO, `chimes-agent qe-relabel` (submit) + `--collect`
+— see `docs/commands/qe-relabel.md`.
 
 ## 2. Split into train/holdout
 
-**Stub today** — see `docs/commands/dataset-select.md` for the planned
-interface. For now, do this with your own script (as prior studies did with
-`make_holdout_split.py`-style tooling), producing a train `.xyzf` and a
-held-out `.xyzf` covering the same element/composition space.
+```bash
+chimes-agent dataset-select --frames pool.xyzf --method stratified_holdout \
+  --holdout-fraction 0.2 --output-dir ./study/split
+```
+
+See `docs/commands/dataset-select.md` for `fps`/`random` alternatives.
 
 ## 3. Generate `fm_setup.in`
 
@@ -82,19 +88,25 @@ retention/FPS-selected subsets), pass `--params` multiple times to get
 
 ## 7. Validate with LAMMPS
 
-**Stub today** — see `docs/commands/lammps-run.md`. Once implemented, this
-runs a single-point or short MD check via the ChIMES-patched
-`lmp_mpi_chimes` build (`chimes-agent setup --component lammps`) as an
-independent cross-check against the ctypes evaluator used in step 6 (prior
-studies found these two calculators agree to ~1e-9, so this step is mainly
-a sanity check that the model behaves the same way inside an actual MD
-integrator, not just single-point).
+```bash
+chimes-agent lammps-run --params ./study/fit/params.txt \
+  --structure-xyzf /abs/path/to/holdout.xyzf --frame-index 0 \
+  --elements C,H,O --masses '{"C":12.011,"H":1.008,"O":15.999}' \
+  --mode single_point --output-dir ./study/lmp_check
+```
+
+An independent cross-check against the ctypes evaluator used in step 6 —
+they're validated to agree to ~1e-3 (see `docs/commands/lammps-run.md`),
+so this step is mainly a sanity check that the model behaves the same way
+inside an actual MD integrator, not just single-point.
 
 ## 8. Iterate
 
 Adjust cutoffs/order in step 3, or λ in step 5, based on what step 6 shows
 — this is the human/agent judgment loop this repo is designed to make fast
-to iterate, not to automate away. `chimes-agent sweep` (**stub today**, see
-`docs/commands/sweep.md`) will eventually automate running a whole grid of
-step 3–6 combinations and reporting a comparison table, but the choice of
-which point in that table to ship stays yours.
+to iterate, not to automate away. `chimes-agent sweep` (`docs/commands/sweep.md`)
+automates running a whole grid of step 3–6 combinations and reports a
+comparison table, but the choice of which point in that table to ship
+stays yours — unless you use [`auto-build`](../commands/auto-build.md),
+which runs steps 1–6 in one call and does pick a winner (lowest holdout
+force RMSE), still reporting the full table alongside its choice.

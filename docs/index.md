@@ -75,6 +75,7 @@ chimes-agent solve --describe
 - **[Machine profiles](concepts/machine_profiles.md)** — HPC machine profiles (Dane, Stampede3), adding your own cluster
 - **[QM-driver plugins](concepts/qm_driver_plugins.md)** — the QM-driver registry design, how Quantum ESPRESSO slots in
 - **[Units and conventions](concepts/units_and_conventions.md)** — unit conventions and the guardrails baked in as defaults
+- **[Cutoffs and lambdas](concepts/cutoffs_and_lambdas.md)** — documented ChIMES cutoff/λ/order guidance vs. defaults, and how `auto-build` derives them from data
 - **[Commands](commands/index.md)** — full reference, one page per subcommand
 - **[Tutorial: end-to-end holdout study](tutorials/end_to_end_holdout_study.md)** — a full real-study walkthrough
 

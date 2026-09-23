@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,3 +159,15 @@ def poll_jobs(profile, job_handles: list, *, verbose: bool = True) -> None:
         return
     helpers = _al_driver_helpers()
     helpers.wait_for_jobs(real, job_system=profile.job_system, verbose=verbose)
+
+
+def job_in_queue(job_id: str) -> bool:
+    """A single, non-blocking squeue check (unlike poll_job, which blocks
+    in a loop until the job is gone) -- for callers that need to do
+    something else (e.g. tail a log and react) between checks."""
+    proc = subprocess.run(["squeue", "-j", job_id], capture_output=True, text=True)
+    return job_id in proc.stdout
+
+
+def cancel_job(job_id: str) -> None:
+    subprocess.run(["scancel", job_id], capture_output=True, text=True)

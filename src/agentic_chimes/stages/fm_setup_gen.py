@@ -47,6 +47,9 @@ SCHEMA = {
         "fcuttyp": {"type": "string", "default": "CUBIC"},
         "exclude_3b": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
         "exclude_4b": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+        "special_maxim_3b": {"type": ["number", "null"], "description": "Overrides the 2-body S_MAXIM for all 3-body clusters (documented ChIMES practice: a shorter 3-body outer cutoff, the 1st non-bonded shell)."},
+        "special_maxim_4b": {"type": ["number", "null"], "description": "Same, for 4-body clusters."},
+        "special_blocks": {"type": "array", "description": "Raw io/fm_setup.py-shaped SPECIAL blocks, for anything special_maxim_3b/4b don't cover (e.g. per-cluster SPECIFIC values, S_MINIM overrides)."},
     },
 }
 
@@ -72,6 +75,8 @@ def add_arguments(parser) -> None:
     parser.add_argument("--chbtype", default="MORSE")
     parser.add_argument("--fcuttyp", default="CUBIC")
     parser.add_argument("--s-delta", dest="s_delta", type=float, default=0.01)
+    parser.add_argument("--special-maxim-3b", dest="special_maxim_3b", type=float, default=None)
+    parser.add_argument("--special-maxim-4b", dest="special_maxim_4b", type=float, default=None)
 
 
 def _pair_key(a: str, b: str) -> str:
@@ -144,6 +149,22 @@ def _build_params(args_dict: dict) -> dict:
         params["exclude_3b"] = args_dict["exclude_3b"]
     if args_dict.get("exclude_4b"):
         params["exclude_4b"] = args_dict["exclude_4b"]
+
+    # per-bodiedness outer cutoff overrides -- the base PAIRIDX S_MAXIM
+    # (from pair_cutoffs above) applies to 2-body; ChIMES' documented
+    # guidance (see docs/concepts/cutoffs_and_lambdas.md) is a *shorter*
+    # outer cutoff for 3-/4-body, expressed via "SPECIAL 3B/4B S_MAXIM"
+    # blocks (io/fm_setup.py already round-trips these).
+    if args_dict.get("special_maxim_3b") is not None:
+        params["special_blocks"].append(
+            {"order": 3, "bound": "S_MAXIM", "mode": "ALL", "value": float(args_dict["special_maxim_3b"])}
+        )
+    if args_dict.get("special_maxim_4b") is not None:
+        params["special_blocks"].append(
+            {"order": 4, "bound": "S_MAXIM", "mode": "ALL", "value": float(args_dict["special_maxim_4b"])}
+        )
+    if args_dict.get("special_blocks"):
+        params["special_blocks"].extend(args_dict["special_blocks"])
 
     return params
 

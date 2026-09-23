@@ -182,6 +182,7 @@ job. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contra
 | `amat-build` | **implemented** (local only) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
 | `solve` | **implemented** (svd/ridge/lassolars/...; dlars/dlasso pending HPC layer) | Solve for `params.txt` |
 | `model-build` | **implemented** | Complete build: amat-build then solve, sequentially |
+| `auto-build` | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
 | `dataset-select` | **implemented** | FPS / random / stratified-holdout sampling |
 | `sweep` | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm + comparison table (not auto-tuning) |
 | `evaluate` | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |
@@ -218,6 +219,7 @@ mkdocs serve   # live-reloading dev server at http://127.0.0.1:8000
 - [docs/concepts/machine_profiles.md](docs/concepts/machine_profiles.md) — HPC machine profiles, adding your own cluster
 - [docs/concepts/qm_driver_plugins.md](docs/concepts/qm_driver_plugins.md) — the QM-driver registry, how QE slots in, how to add another code
 - [docs/concepts/units_and_conventions.md](docs/concepts/units_and_conventions.md) — unit conventions and the guardrails baked in as defaults (Dane `--ntasks-per-node`, lustre2 file-count quota, hartree/bohr↔eV/Å)
+- [docs/concepts/cutoffs_and_lambdas.md](docs/concepts/cutoffs_and_lambdas.md) — which cutoff/λ/order choices are documented ChIMES practice vs. reasonable defaults, and how `auto-build` derives them from training data
 - [docs/commands/](docs/commands/) — one page per subcommand
 - [docs/tutorials/end_to_end_holdout_study.md](docs/tutorials/end_to_end_holdout_study.md) — a full real-study walkthrough
 

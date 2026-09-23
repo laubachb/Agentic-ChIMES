@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — auto-build: the full documented-cutoff-driven pipeline
+
+- **`auto-build`** (new): unlabeled configs → QE labeling → data-driven
+  cutoff/Morse-λ determination → 2b/3b/4b polynomial-order sweep at those
+  fixed cutoffs → one "optimal" model (lowest holdout force RMSE) →
+  optional AL stabilization handoff. Explicitly allowed to pick a winner
+  (unlike `model-build`/`sweep`, which stay hands-off), per user request —
+  confirmed blocking/synchronous execution, the RMSE selection criterion,
+  and the AL-stabilization scope (mechanical ALC-0 staging + `al-run`
+  launch, not `config.py` auto-generation) with the user beforehand.
+- Every non-trivial number `auto-build` derives is traced to actual
+  documented ChIMES practice (`codes/chimes_lsq-LLfork/doc/source/
+  {lsq_input_file,quick_start}.rst`), not invented heuristics -- see new
+  `docs/concepts/cutoffs_and_lambdas.md` for the citations:
+  - **S_MINIM**: min observed pair distance minus 0.002-0.02 Å (documented
+    range; default 0.02).
+  - **S_MAXIM**: RDF-shell-derived (2-body = 2nd RDF minimum or the
+    documented ~8 Å default; 3-/4-body = 1st RDF minimum), capped by the
+    box-safety bound `chimes_lsq` itself enforces
+    (`ClassDefs.C:2593-2630`'s `BOXDIM.IS_RCUT_SAFE`) -- capping is
+    reported per pair, not silent.
+  - **MORSE_LAMBDA**: location of the first RDF peak.
+  - **Regularization**: fixed at the documented normalized-fit default
+    (1e-5), not swept (only polynomial order is, per the user's request).
+  - **Order sweep**: centered on the documented 12/7/3 starting point;
+    selection by holdout cross-validation is the documented method for
+    choosing order, not an invented criterion.
+- New **`io/rdf.py`**: PBC-aware (minimum-image, orthorhombic) per-pair
+  minimum distance and RDF shape computation, with peak/minimum
+  detection. Validated against a real physical test case (a simple cubic
+  lattice with exactly known shell distances via geometry -- 1st/2nd/3rd
+  shell at a, a√2, a√3) in `tests/unit/test_rdf.py`, not just synthetic
+  numbers.
+- New **`stages/_cutoffs.py`**: turns the RDF computation into the actual
+  S_MINIM/S_MAXIM/MORSE_LAMBDA numbers per pair, with the box-safety cap
+  and per-pair `capped`/`cap_reason` reporting.
+- **`fm-setup-gen`** gained `special_maxim_3b`/`special_maxim_4b`/
+  `special_blocks` inputs (renders `SPECIAL 3B/4B S_MAXIM` blocks --
+  `io/fm_setup.py` already round-tripped this grammar, just wasn't
+  exposed as an input) -- needed so a shorter documented 3-/4-body outer
+  cutoff can actually be requested; `sweep`'s per-point fm-setup-gen calls
+  updated to pass these through too.
+- 20 new unit tests (`test_rdf.py`, `test_cutoffs.py`, `test_auto_build.py`
+  -- 71 total, up from 52), including a real end-to-end pipeline run
+  against the bundled fixture (label→split→cutoffs→sweep→choose in ~33s)
+  and a real `stabilize`-phase test exercising `auto_build.py`'s own
+  ALC-0-staging code path against a fake al_driver fixture (mirrors
+  `test_al_run.py`'s pattern) -- not a hand-copied replica of the logic.
+- Full suite still passes in a simulated fresh-CI checkout (no `codes/`):
+  61 passed / 10 skipped, no failures.
+
 ## Unreleased — dataset/QE/sweep/LAMMPS/active-learning iteration
 
 - **`model-build`** (new): amat-build then solve composed into one call.

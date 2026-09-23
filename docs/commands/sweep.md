@@ -54,7 +54,13 @@ of the sweep.
 Everything `fm-setup-gen` + `solve` + `evaluate` accept — see those
 pages' `--describe` output. Required: `trjfile`, `nframes`, `elements`.
 Recommended: `pair_cutoffs` (or the sweep will use `default_s_minim`/
-`default_s_maxim`, i.e. the same cutoff for every pair).
+`default_s_maxim`, i.e. the same cutoff for every pair); `special_maxim_3b`/
+`special_maxim_4b` if you want a shorter 3-/4-body outer cutoff (see
+[Cutoffs and lambdas](../concepts/cutoffs_and_lambdas.md)).
+
+For picking cutoffs/λ *and* the order grid automatically from your
+training data in one call, see [`auto-build`](auto-build.md) — it's
+`sweep` plus the data-driven parameter derivation and a final pick.
 
 ## Output
 

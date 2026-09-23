@@ -33,7 +33,13 @@ Or via `--json-in` for the full schema (`--describe` to print it), including
 | `--elements` | comma-separated, defines atom-type table order |
 | `--order` | JSON `{"2": N, "3": N, "4": N}` — `"4"` is optional; omitting it renders `PAIRTYP` without a 4-body order or Chebyshev range, matching upstream's own convention (see `special3b/fm_setup.in`) |
 | `--pair-cutoffs`, `--morse-lambda` | JSON, keyed `"El1-El2"` (order-insensitive lookup); unlisted pairs fall back to `--default-s-minim`/`--default-s-maxim`/`--default-morse-lambda` |
+| `--special-maxim-3b`, `--special-maxim-4b` | Override the 2-body `S_MAXIM` for all 3-/4-body clusters (a single global value, rendered as a `SPECIAL 3B/4B S_MAXIM: ALL <value>` block) — documented ChIMES practice is a *shorter* outer cutoff for higher-bodiedness terms; see [Cutoffs and lambdas](../concepts/cutoffs_and_lambdas.md). For per-cluster values, pass raw `special_blocks` (JSON, matching `io/fm_setup.py`'s grammar) via `--json-in` instead. |
 | `--fitener`, `--fitstrs` | pass through as raw strings (`false`, `true`, `ALL`, `FIRST <n>`) per upstream's grammar |
+
+Cutoffs/λ don't have to be hand-picked — [`auto-build`](auto-build.md) derives
+`pair_cutoffs`/`morse_lambda`/`special_maxim_3b`/`special_maxim_4b` directly
+from your training data's own radial distribution, per ChIMES' documented
+guidance.
 
 ## Output
 

@@ -13,6 +13,7 @@ contract every page below assumes.
 | [`amat-build`](amat-build.md) | **implemented** (local only) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
 | [`solve`](solve.md) | **implemented** (svd/ridge/lassolars/...; dlars/dlasso pending HPC layer) | Solve for `params.txt` |
 | [`model-build`](model-build.md) | **implemented** | Complete build: amat-build then solve, sequentially |
+| [`auto-build`](auto-build.md) | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
 | [`dataset-select`](dataset-select.md) | **implemented** | FPS / random / stratified-holdout sampling |
 | [`sweep`](sweep.md) | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm |
 | [`evaluate`](evaluate.md) | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |

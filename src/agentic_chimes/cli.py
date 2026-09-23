@@ -31,6 +31,7 @@ STAGE_MODULE_NAMES = [
     "solve",
     "model_build",
     "sweep",
+    "auto_build",
     "evaluate",
     "lammps_run",
     "submit",
