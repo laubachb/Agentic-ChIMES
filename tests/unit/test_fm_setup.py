@@ -2,7 +2,15 @@
 shipped in codes/chimes_lsq-LLfork/test_suite-lsq/. Semantic round-trip
 (re-parsing a rendering reproduces the same structured dict), not byte-for-
 byte, since real fm_setup.in files vary in whitespace/alignment.
+
+codes/ is gitignored (see docs/concepts/vendored_forks.md) and not cloned
+by CI (.github/workflows/ci.yml runs no `chimes-agent setup`), so these
+tests skip cleanly rather than failing when the fixtures aren't present --
+same pattern as test_evaluate.py's chimescalc_lib check. Run
+`chimes-agent setup --component codes` locally to exercise them for real.
 """
+
+import pytest
 
 from agentic_chimes import config
 from agentic_chimes.io import fm_setup
@@ -11,6 +19,11 @@ FIXTURES = [
     config.CHIMES_LSQ_ROOT / "test_suite-lsq" / "test_4atoms.2" / "fm_setup.in",
     config.CHIMES_LSQ_ROOT / "test_suite-lsq" / "special3b" / "fm_setup.in",
 ]
+
+pytestmark = pytest.mark.skipif(
+    not all(p.is_file() for p in FIXTURES),
+    reason="codes/chimes_lsq-LLfork not cloned; run `chimes-agent setup --component codes`",
+)
 
 
 def test_fixtures_exist():
