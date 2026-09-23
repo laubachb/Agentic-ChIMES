@@ -1,0 +1,83 @@
+site_name: Agentic ChIMES
+site_description: >-
+  A tool-calling CLI and Python API for building ChIMES machine-learned
+  interatomic potentials end to end.
+repo_url: https://github.com/laubachb/Agentic-ChIMES
+repo_name: laubachb/Agentic-ChIMES
+edit_uri: edit/master/docs/
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - navigation.sections
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - def_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: getting_started.md
+  - Concepts:
+      - concepts/stages_and_contracts.md
+      - concepts/vendored_forks.md
+      - concepts/machine_profiles.md
+      - concepts/qm_driver_plugins.md
+      - concepts/units_and_conventions.md
+  - Commands:
+      - commands/index.md
+      - setup: commands/setup.md
+      - fm-setup-gen: commands/fm-setup-gen.md
+      - amat-build: commands/amat-build.md
+      - solve: commands/solve.md
+      - evaluate: commands/evaluate.md
+      - submit: commands/submit.md
+      - dataset-select: commands/dataset-select.md
+      - qe-relabel: commands/qe-relabel.md
+      - sweep: commands/sweep.md
+      - lammps-run: commands/lammps-run.md
+      - al-select: commands/al-select.md
+  - Tutorial: tutorials/end_to_end_holdout_study.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/laubachb/Agentic-ChIMES

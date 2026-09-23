@@ -1,0 +1,25 @@
+# TACC Stampede3 machine profile (skx nodes).
+#
+# NOTE default_ntasks_per_node=48 matches an SKX node's physical core count;
+# confirm against current TACC documentation before a first real run, since
+# node counts/partitions occasionally change between allocations.
+name: stampede3
+job_system: TACC
+launcher: ibrun
+account: TG-CHM250118
+hosttype: UT-TACC
+partitions:
+  debug: skx-dev
+  batch: skx
+default_ntasks_per_node: 48
+require_ntasks_per_node_or_exclusive: true
+poll_interval_s: 60
+modules:
+  - intel/24.0
+  - impi/21.11
+filesystem:
+  scratch_root: /work2/09982/blaubach/stampede3
+  max_small_files_per_dir: 5000
+  bulk_archive_root: null
+qe:
+  configure_extra_args: []

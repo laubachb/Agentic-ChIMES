@@ -1,0 +1,33 @@
+# LLNL LC "Dane" machine profile.
+#
+# GOTCHA this profile exists to close permanently: a bare `sbatch -N 1` on
+# Dane allocates only 1 CPU + ~2.3GB (not a full node). Every job submitted
+# through hpc/slurm.py gets `default_ntasks_per_node` unless the caller
+# explicitly overrides it — never submit with a bare -N and no ntasks-per-node.
+name: dane
+job_system: slurm
+launcher: srun
+account: pls2
+# hosttype selects which codes/*/modfiles/<hosttype>.mod the vendored forks'
+# own install.sh scripts source (see `chimes-agent setup`).
+hosttype: LLNL-LC
+partitions:
+  debug: pdebug
+  batch: pbatch
+default_ntasks_per_node: 112
+require_ntasks_per_node_or_exclusive: true
+poll_interval_s: 60
+modules:
+  - intel-classic/2021.6.0
+  - mvapich2/2.3.7
+conda_env: mat_mcts
+filesystem:
+  scratch_root: /p/lustre2/${USER}
+  # lustre2 has a FILE-COUNT quota (~1.05M soft), not a space quota - never
+  # write one file per frame/config at scale here.
+  max_small_files_per_dir: 5000
+  bulk_archive_root: /p/lustre3/${USER}
+qe:
+  # QE has no LLNL-LC .mod file upstream; MPI/BLAS/LAPACK/FFTW come from the
+  # same modules loaded above (mvapich2 provides MPI, intel-classic provides MKL).
+  configure_extra_args: []

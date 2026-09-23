@@ -1,0 +1,31 @@
+# External dependencies fetched by `chimes-agent setup` -- never pushed to
+# this repo. codes/ holds the three LLNL/LindseyLab-umich forks, cloned
+# fresh by `chimes-agent setup` (setup/clone_codes.py); deps/ holds
+# LAMMPS + Quantum ESPRESSO built/fetched from there. Both are install-time
+# state, not repo content.
+codes/
+deps/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+build/
+dist/
+
+# Test / run artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MkDocs local build output (deployed to GitHub Pages by .github/workflows/docs.yml,
+# not committed here)
+site/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

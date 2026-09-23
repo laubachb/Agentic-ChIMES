@@ -1,0 +1,26 @@
+name: unit-tests
+
+# Runs only the local, no-HPC test tier (tests/unit) -- these need no Slurm
+# allocation and no built C++ toolchain beyond what a plain pip install
+# provides. HPC-dependent checks (a real Slurm submission, a real DLARS
+# solve, a real QE job) are not part of this workflow; see
+# docs/concepts/stages_and_contracts.md's Verification section. Tests that
+# need a component built by `chimes-agent setup` (e.g. evaluate's ctypes
+# wrapper) skip cleanly here rather than failing, since this workflow never
+# runs `chimes-agent setup`.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit -v

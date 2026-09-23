@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-chimes"
+version = "0.1.0"
+description = "Tool-calling CLI and Python API for building ChIMES machine-learned interatomic potentials end to end."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Benjamin R. Laubach" }]
+
+dependencies = [
+    "numpy>=1.23",
+    "pyyaml>=6.0",
+    "jsonschema>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
+
+[project.scripts]
+chimes-agent = "agentic_chimes.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"agentic_chimes" = ["schemas/*.json", "machines/profiles/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = [
+    "hpc: requires a real HPC allocation/Slurm submission, not run by default",
+]
