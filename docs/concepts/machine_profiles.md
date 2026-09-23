@@ -73,3 +73,44 @@ name (`"debug"`/`"batch"`) to the machine's real partition string via
 `profile.queue_for(...)`, and `dry_run=True` rendering the sbatch script
 (via `hpc/dry_run.py`) instead of calling `sbatch`. It does not
 reimplement Slurm submission or job polling.
+
+## Shared filesystem required for real HPC submissions
+
+`--output-dir` (or `work_dir`) for any stage that submits a **real**
+(non-dry-run) Slurm job must be on a filesystem the compute nodes can see
+— `/p/lustre2/...`, not a login-node-local path like `/tmp` or a
+per-session scratch directory under it. This isn't a `chimes-agent`
+restriction, it's how the cluster is built: a compute node has its own
+local `/tmp`, physically separate from the login node's. A job submitted
+with `--output-dir` under `/tmp` will still show as `COMPLETED` in
+`sacct` (Slurm itself doesn't know or care what the job's commands did to
+files), but every file the job reads or writes lands on the *compute
+node's* local disk, invisible from wherever you're checking — the job
+silently runs against missing input and produces no visible output.
+
+This was found the hard way validating `solve --algorithm dlars`'s real
+HPC path (see `docs/commands/solve.md`): a real submission with
+`--output-dir` under a `/tmp` scratchpad path came back `COMPLETED`
+with zero output files anywhere reachable; the same submission against a
+`/p/lustre2/...` path produced `stdoutmsg`, module-load output, and
+command output exactly as expected. `--dry-run` previews render correctly
+either way (no filesystem access needed to just write a script file
+locally), so this only bites on a real submission — always point any
+stage's `--output-dir` at shared storage before dropping `--dry-run`.
+
+## A Slurm walltime gotcha already closed here
+
+`sbatch -t` wants `HH:MM:SS` (or a similarly qualified format) — a bare
+decimal hour count like `1.5` is not valid Slurm time syntax (a bare
+number is parsed as *minutes*, and the decimal point is rejected
+outright). Every `walltime_hours` value passed through this repo's
+`hpc/slurm.py`/`hpc/dry_run.py` is converted via
+`hpc.dry_run.hours_to_slurm_time()` before it ever reaches `sbatch` — this
+was a real, previously-undetected bug (every earlier `--dry-run` preview
+looked fine since nothing validated the `-t` value's actual Slurm
+validity) until the first real submission surfaced it; see
+`tests/unit/test_dry_run.py::test_rendered_script_never_has_a_bare_decimal_walltime`
+for the regression test. You don't need to do anything to get this right
+— every stage's `--walltime-hours` flag already goes through the fixed
+path — this section exists so a future direct caller of `hpc.submit_job`
+knows not to bypass it.

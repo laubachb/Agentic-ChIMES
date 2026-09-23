@@ -242,6 +242,15 @@ def run(args) -> dict:
         "algorithm": a.get("algorithm", "lassolars"),
         "alpha": a.get("alpha", 1.0e-5),
         "max_frames": a.get("max_frames"),
+        # reuses the same machine/queue/walltime as QE labeling (the common
+        # single-cluster-campaign case); drop to `sweep`/`solve` directly if
+        # you need the solve step on a different machine or walltime than QE
+        "machine": a.get("machine") if a.get("algorithm") in ("dlars", "dlasso") else None,
+        "queue": a.get("queue", "batch"),
+        "walltime_hours": a.get("walltime_hours", 2.0),
+        "nodes": a.get("nodes", 1),
+        "ntasks_per_node": a.get("ntasks_per_node"),
+        "poll_interval_s": a.get("poll_interval_s", 60),
     }
     sweep_grid = {
         "order_2b": order_grid.get("2", DEFAULT_ORDER_GRID["2"]),

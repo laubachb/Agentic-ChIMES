@@ -25,6 +25,10 @@ docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
 ]
+al-select = [
+    "matplotlib>=3.5",
+    "cycler>=0.11",
+]
 
 [project.scripts]
 chimes-agent = "agentic_chimes.cli:main"

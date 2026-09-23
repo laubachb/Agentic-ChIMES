@@ -119,7 +119,7 @@ def submit_job(
             job_name=job_name,
             job_nodes=str(nodes),
             job_ppn=str(ntasks_per_node),
-            job_walltime=str(walltime_hours),
+            job_walltime=_dry_run.hours_to_slurm_time(walltime_hours),
             job_queue=partition,
             job_account=profile.account,
             job_system=profile.job_system,

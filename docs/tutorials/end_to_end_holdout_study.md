@@ -8,9 +8,9 @@ whole thing in one call with cutoffs/λ/order chosen automatically from
 your data, see [`auto-build`](../commands/auto-build.md) instead — this
 tutorial is for when you want to drive (or understand) each step yourself.
 
-Only `al-select` (standalone diversity selection outside a full AL cycle)
-remains a stub among the stages below — everything else described here is
-implemented.
+Every stage described here (and in the CLI generally) is implemented,
+including [`al-select`](../commands/al-select.md) (standalone diversity
+selection outside a full AL cycle).
 
 Assumes `chimes-agent setup --machine dane --component all` has already
 been run (or at least `chimes_lsq` + `chimes_calculator`).
@@ -54,13 +54,13 @@ order).
 chimes-agent amat-build --fm-setup-in ./study/fit/fm_setup.in --output-dir ./study/fit
 ```
 
-For a large training set you'll want `SPLITFI true` in the generated
-`fm_setup.in` (edit it directly, or extend `fm-setup-gen`'s input) and the
-`--hpc` path once it lands (Phase 2) — for now, `amat-build` runs locally.
+For a large training set (`SPLITFI true` in `fm_setup.in`, needed for the
+DLARS solve path below), add `--machine dane --queue batch --nodes 1
+--ntasks-per-node 112` to submit via Slurm instead of running locally.
 
 ## 5. Solve
 
-Local algorithms work today:
+Local algorithms (fine for small/medium bases):
 
 ```bash
 chimes-agent solve --algorithm lassolars --alpha 1e-5 \
@@ -69,11 +69,18 @@ chimes-agent solve --algorithm lassolars --alpha 1e-5 \
   --output-dir ./study/fit
 ```
 
-`--algorithm dlars`/`dlasso` (the path most prior large studies with this
-toolchain actually used, including the hand-validated "cliff" workaround
-described in `docs/commands/solve.md`) needs the HPC submission layer and
-is not wired up yet — see that page for what's already built
-(`stages/_cliff_monitor.py`, unit-tested) versus what's still pending.
+For a large basis, `--algorithm dlars`/`dlasso` (the path most prior large
+studies with this toolchain actually used, including the hand-validated
+"cliff" workaround now formalized as a live monitor — see
+`docs/commands/solve.md`) submits via Slurm:
+
+```bash
+chimes-agent solve --algorithm dlars --alpha 1e-5 \
+  --A ./study/fit/A.txt --b ./study/fit/b.txt --dim ./study/fit/dim.txt \
+  --header ./study/fit/params.header --map ./study/fit/ff_groups.map \
+  --machine dane --queue batch --walltime-hours 2 --nodes 1 --ntasks-per-node 112 \
+  --output-dir ./study/fit
+```
 
 ## 6. Evaluate against holdout
 

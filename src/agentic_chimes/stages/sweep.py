@@ -121,6 +121,13 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
         eps=base.get("eps", 1.0e-5),
         weights=base.get("weights"),
         folds=base.get("folds", 4),
+        normalize=base.get("normalize", False),
+        machine=base.get("machine"),
+        queue=base.get("queue", "batch"),
+        walltime_hours=base.get("walltime_hours", 2.0),
+        nodes=base.get("nodes", 1),
+        ntasks_per_node=base.get("ntasks_per_node"),
+        poll_interval_s=base.get("poll_interval_s", 60),
         output_dir=str(point_dir),
     )
     mb_result = model_build.run(mb_args)

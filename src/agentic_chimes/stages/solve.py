@@ -45,7 +45,7 @@ SCHEMA = {
         "eps": {"type": "number", "default": 1.0e-5},
         "weights": {"type": ["string", "null"]},
         "folds": {"type": "integer", "default": 4},
-        "normalize": {"type": "boolean", "default": True, "description": "dlars/dlasso only."},
+        "normalize": {"type": "boolean", "default": False, "description": "dlars/dlasso only -- dlars itself warns 'normalize should not be used with chimes_lsq' (confirmed on a real run: normalize=true causes an immediate MKL error / zero-variable stall)."},
         "split_files": {"type": "boolean", "default": False, "description": "dlars/dlasso only; must match fm_setup.in's SPLITFI."},
         "machine": {"type": ["string", "null"], "description": "Required for algorithm=dlars/dlasso."},
         "queue": {"type": "string", "default": "batch"},
@@ -71,7 +71,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--eps", type=float, default=1.0e-5)
     parser.add_argument("--weights", default=None)
     parser.add_argument("--folds", type=int, default=4)
-    parser.add_argument("--normalize", type=lambda s: s.lower() != "false", default=True)
+    parser.add_argument("--normalize", type=lambda s: s.lower() == "true", default=False)
     parser.add_argument("--split-files", dest="split_files", action="store_true")
     parser.add_argument("--machine", default=None)
     parser.add_argument("--queue", default="batch")
@@ -178,7 +178,7 @@ def run(args) -> dict:
         map_file=str(Path(args.map).resolve()),
         algorithm=algorithm,
         alpha=args.alpha,
-        normalize=getattr(args, "normalize", True),
+        normalize=getattr(args, "normalize", False),
         split_files=bool(getattr(args, "split_files", False)),
         weights=str(Path(args.weights).resolve()) if getattr(args, "weights", None) else None,
         nodes=getattr(args, "nodes", 1) or 1,
@@ -186,6 +186,7 @@ def run(args) -> dict:
         walltime_hours=getattr(args, "walltime_hours", 2.0) or 2.0,
         queue=getattr(args, "queue", "batch") or "batch",
         poll_interval_s=getattr(args, "poll_interval_s", 60) or 60,
+        dry_run=bool(getattr(args, "dry_run", False)),
     )
     result["algorithm"] = algorithm
     return result

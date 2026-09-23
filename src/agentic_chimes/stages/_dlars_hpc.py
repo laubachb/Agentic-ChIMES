@@ -52,7 +52,7 @@ def run_dlars_hpc(
     map_file: str,
     algorithm: str,
     alpha: float,
-    normalize: bool = True,
+    normalize: bool = False,
     split_files: bool = False,
     weights: Optional[str] = None,
     nodes: int = 1,
@@ -61,6 +61,7 @@ def run_dlars_hpc(
     queue: str = "batch",
     poll_interval_s: int = 60,
     cliff_kwargs: Optional[dict] = None,
+    dry_run: bool = False,
 ) -> dict:
     if algorithm not in _ALGO_TO_DLARS_FLAG:
         raise ValueError(f"algorithm must be one of {list(_ALGO_TO_DLARS_FLAG)}, got {algorithm!r}")
@@ -96,8 +97,11 @@ def run_dlars_hpc(
         ntasks_per_node=ntasks_per_node,
         walltime_hours=walltime_hours,
         queue=queue,
-        dry_run=False,
+        dry_run=dry_run,
     )
+
+    if dry_run:
+        return {"job_id": None, "dry_run": True, "job_file": str(handle.job_file), "cliff_detected": False, "cliff_report": None, "params": None, "log": None}
 
     monitor = CliffMonitor(**(cliff_kwargs or {}))
     log_path = work_dir / "dlars.log"

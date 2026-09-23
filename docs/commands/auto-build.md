@@ -98,10 +98,16 @@ the winning `fm_setup.in` + training `.xyzf` into `alc0_dir`, then calls
   `--nlayers` (default 1, for the box-safety bound)
 - `--order-grid '{"2":[...],"3":[...],"4":[null or int,...]}'` (default
   centered on the documented 12/7/3 starting point)
-- `--algorithm` (default `lassolars`; `dlars`/`dlasso` not wired up, same
-  scope limit as `solve`), `--alpha` (default 1e-5, documented normalized
-  default — fixed, not swept), `--fitener`, `--fitstrs`, `--max-frames`
+- `--algorithm` (default `lassolars`, runs locally; set `dlars`/`dlasso`
+  to solve via the same `--machine` used for QE labeling instead),
+  `--alpha` (default 1e-5, documented normalized default — fixed, not
+  swept), `--fitener`, `--fitstrs`, `--max-frames`
 - `--stabilize '{"alc0_dir","al_run_work_dir","config_py","cycles"}'`
+
+`--queue`/`--walltime-hours`/`--nodes`/`--ntasks-per-node` are shared
+between the QE labeling step and a `dlars`/`dlasso` solve step (the common
+single-cluster-campaign case) — use `sweep`/`solve` directly if you need
+different HPC settings for each.
 
 ## Output
 
@@ -130,4 +136,4 @@ the winning `fm_setup.in` + training `.xyzf` into `alc0_dir`, then calls
   minimum of each pair's own derived value) — see
   [Cutoffs and lambdas](../concepts/cutoffs_and_lambdas.md#s_maxim-outer-cutoff-documented-qualitatively-rdf-derived-here)
   for why and the future per-pair extension.
-- `dlars`/`dlasso` aren't wired up (same as `solve`/`sweep`'s existing scope).
+- `SPLITFI`-true / split-file A-matrices aren't produced by `fm-setup-gen` here (auto-build always generates a single-file basis) -- for a basis large enough to need DLARS' split-file path, build `fm_setup.in`/`amat-build` manually and use `sweep`/`solve` directly instead of `auto-build`.

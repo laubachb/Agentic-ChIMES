@@ -1,7 +1,6 @@
 # `chimes-agent amat-build`
 
-**Status: implemented (local only).** `--hpc`/`SPLITFI` support for large
-DLARS-bound runs lands alongside `solve`'s HPC path.
+**Status: implemented**, local or via `--machine`.
 
 Builds `A.txt`/`b.txt`/`dim.txt` (and friends) by subprocessing the
 `chimes_lsq` C++ binary against an `fm_setup.in` whose `TRJFILE` already
@@ -12,10 +11,19 @@ output lands in the process's working directory.
 ## Usage
 
 ```bash
+# local (fine for small/medium bases)
 chimes-agent amat-build --fm-setup-in ./run1/fm_setup.in --output-dir ./run1
+
+# via Slurm (chimes_lsq is MPI-capable; needed for SPLITFI-true / DLARS-bound runs)
+chimes-agent amat-build --fm-setup-in ./run1/fm_setup.in \
+  --machine dane --queue batch --walltime-hours 1 --nodes 1 --ntasks-per-node 112 \
+  --output-dir ./run1
 ```
 
 If `--output-dir` is omitted, output lands next to the `fm_setup.in` file.
+**When submitting to HPC, `--output-dir` must be on a shared filesystem**
+(e.g. `/p/lustre2/...`), never a login-node-local path like `/tmp` -- see
+[Machine profiles: shared filesystem required for real jobs](../concepts/machine_profiles.md#shared-filesystem-required-for-real-hpc-submissions).
 
 ## Flags
 
@@ -23,6 +31,11 @@ If `--output-dir` is omitted, output lands next to the `fm_setup.in` file.
 - `--chimes-lsq-bin PATH` — override the resolved `chimes_lsq` binary
   (default: resolved from `deps/installed.json` / `AGENTIC_CHIMES_LSQ_BIN`,
   see `chimes-agent setup`)
+- `--machine {dane,stampede3,<path>}` — if given, submits via
+  `<launcher> [-n <cores>] chimes_lsq <fm_setup.in>` and blocks until it
+  completes (`hpc.poll_job`); omit for local execution
+- `--queue`, `--walltime-hours`, `--nodes`, `--ntasks-per-node` (HPC only)
+- `--dry-run` (generic flag, HPC only) — render the sbatch script, don't submit
 
 ## Output
 

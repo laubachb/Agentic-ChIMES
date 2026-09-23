@@ -10,8 +10,8 @@ contract every page below assumes.
 |---|---|---|
 | [`setup`](setup.md) | **implemented** | Clone the vendored forks + build/fetch chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO for a machine |
 | [`fm-setup-gen`](fm-setup-gen.md) | **implemented** | Generate `fm_setup.in` from typed parameters (elements, cutoffs, order, fit flags) |
-| [`amat-build`](amat-build.md) | **implemented** (local only) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
-| [`solve`](solve.md) | **implemented** (svd/ridge/lassolars/...; dlars/dlasso pending HPC layer) | Solve for `params.txt` |
+| [`amat-build`](amat-build.md) | **implemented** (local or `--machine`) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
+| [`solve`](solve.md) | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
 | [`model-build`](model-build.md) | **implemented** | Complete build: amat-build then solve, sequentially |
 | [`auto-build`](auto-build.md) | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
 | [`dataset-select`](dataset-select.md) | **implemented** | FPS / random / stratified-holdout sampling |
@@ -21,8 +21,6 @@ contract every page below assumes.
 | [`qe-relabel`](qe-relabel.md) | **implemented** | Submit Quantum ESPRESSO single-point jobs; convert output to `.xyzf` |
 | [`submit`](submit.md) | **implemented** | Generic Slurm submit/status/cancel/dry-run |
 | [`al-run`](al-run.md) | **implemented** | Launch al_driver's own active-learning loop as a detached background process |
-| [`al-select`](al-select.md) | planned | Diversity-based active-learning batch selection |
+| [`al-select`](al-select.md) | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` |
 
-`al-select` already registers a real subcommand — `--describe` works, the
-CLI contract is fixed — that echoes its parsed input back. Swapping the
-stub for real logic never changes how the stage is invoked.
+All stages are implemented now.

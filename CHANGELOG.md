@@ -1,5 +1,85 @@
 # Changelog
 
+## Unreleased — `al-select` implemented, closing out the last stub
+
+- **`al-select`** now really wraps al_driver's own Metropolis-MC
+  energy-histogram selector (`codes/al_driver-LLfork/src/gen_selections.py:gen_subset`),
+  imported and called in-process rather than reimplemented, instead of
+  echoing its parsed input. Candidate per-frame energies are predicted
+  via the same ctypes evaluator `evaluate` uses and normalized per atom
+  (`energy / natoms`), confirmed to match al_driver's own on-disk
+  convention against `utilities/new-get_dumb_ener_subjob.sh`'s
+  `paste xyzlist.dat xyzlist.energies | awk '{print $NF/$1}'`.
+  Deliberately standalone (not a full `ALC-<n>`/`CENTRAL_REPO`
+  integration, same scope reasoning as `al-run` not generating
+  `config.py`): a new `--central-repo`/`central_repo_out` plain-energies-
+  file pair lets you chain diversity across repeated calls yourself. New
+  `[al-select]` extra (`matplotlib`/`cycler`, which `gen_selections.py`
+  imports unconditionally for its diagnostic plots) added to
+  `pyproject.toml` since neither was previously a project dependency.
+  Validated for real: a synthetic candidate pool (jittered copies of the
+  known-good CHON fixture `test_evaluate.py` already uses) run through
+  both the Python API and the actual `chimes-agent al-select` CLI
+  entrypoint, confirming a real `gen_subset` Metropolis-MC selection
+  (always keeping the observed min/max-energy frames, e.g. `[2, 4, 10,
+  11, 13]` out of 20 candidates in one real run) — not just a schema
+  round-trip. A separately-tried real ChIMES fixture
+  (`test_suite-lsq/h2o-invr`'s `INVRSE_R`-basis `params.txt`) was rejected
+  by chimes_calculator's serial C++ parser (`"Incorrect input in
+  line...Expect 7 or 8 entries"`), which is why the test fixture uses the
+  MORSE-basis CHON params already proven compatible rather than that one.
+  This was the one remaining planned-but-stubbed stage; every
+  `chimes-agent` subcommand is now implemented.
+
+## Unreleased — DLARS/HPC solve path, validated against a real Slurm job
+
+- **`solve --algorithm dlars/dlasso`** now actually submits to HPC
+  (`--machine`), closing the one gap flagged since Phase 2 as "not wired
+  up." New `stages/_dlars_hpc.py`: submits `chimes_lsq.py --algorithm
+  dlars|dlasso` as a Slurm job, polls the live `dlars.log` into
+  `stages/_cliff_monitor.py`'s `CliffMonitor` every `--poll-interval-s`,
+  and on a detected cliff cancels the job and runs a short fresh `dlars
+  --iterations=<target>` finalize + `chimes_lsq.py --read_output true`,
+  exactly formalizing the hand-validated workaround this repo has
+  documented since early in the project.
+- **`amat-build --machine`**: submits `chimes_lsq` via Slurm (MPI-capable
+  binary) for SPLITFI/DLARS-scale runs, instead of local-only.
+- **`model-build`/`sweep`/`auto-build`** now pass `machine`/HPC settings
+  through to their internal `solve` calls, so a `dlars`/`dlasso` solve is
+  reachable from every level of the stack, not just standalone `solve`.
+- **Validated against a real Slurm job on Dane pdebug**, not just unit
+  tests — and found two real bugs neither the extensive mocked test suite
+  nor `--dry-run` previews could have caught, since both only bite a real
+  submission:
+  - `walltime_hours` (a float, e.g. `1.5`) was stringified directly into
+    `sbatch -t`, which is not valid Slurm time syntax (a bare number
+    parses as *minutes*, and the decimal point is rejected outright) —
+    every real submission before this fix would have gotten a walltime
+    far shorter than requested (or rejected outright). Fixed with
+    `hpc.dry_run.hours_to_slurm_time()`, used everywhere `-t` is rendered.
+  - `--output-dir` pointed at this session's `/tmp` scratchpad: Slurm
+    reported the job `COMPLETED` with no visible error, but zero output
+    files existed anywhere reachable -- the compute node's local `/tmp` is
+    physically separate from the login node's, so the job silently ran
+    against missing input in an unreachable directory. Not a code bug, but
+    now documented prominently (`docs/concepts/machine_profiles.md`) since
+    nothing about `--dry-run` or a mocked test would surface it.
+  - Also found (via the real job's actual log output, not guesswork):
+    `dlars` itself prints `"Warning: normalize should not be used with
+    chimes_lsq"`, and `--normalize true` (the prior default) caused an
+    immediate, real MKL error loop that never advanced past iteration 0 --
+    the cliff monitor's failure-signature detection correctly caught and
+    cancelled it. Default flipped to `--normalize false`; confirmed the
+    same input then solved cleanly end to end on a second real submission
+    (valid `ENDFILE`-terminated `params.txt`, sane holdout RMSE via
+    `evaluate`).
+- 9 new unit tests (`test_dlars_hpc.py`, `test_solve_dlars_dispatch.py`,
+  `test_amat_build_hpc.py`, plus 3 in `test_dry_run.py`) — 85 total, up
+  from 71. The cliff-detection control flow (submit → poll → detect →
+  cancel → finalize) is tested against a mocked HPC boundary; the
+  detection/cancel half was *also* confirmed against the real
+  pathological run above.
+
 ## Unreleased — auto-build: the full documented-cutoff-driven pipeline
 
 - **`auto-build`** (new): unlabeled configs → QE labeling → data-driven

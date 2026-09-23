@@ -179,8 +179,8 @@ job. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contra
 |---|---|---|
 | `setup` | **implemented** | Build/fetch chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO for a machine |
 | `fm-setup-gen` | **implemented** | Generate `fm_setup.in` from typed parameters (elements, cutoffs, order, fit flags) |
-| `amat-build` | **implemented** (local only) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
-| `solve` | **implemented** (svd/ridge/lassolars/...; dlars/dlasso pending HPC layer) | Solve for `params.txt` |
+| `amat-build` | **implemented** (local or `--machine`) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
+| `solve` | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
 | `model-build` | **implemented** | Complete build: amat-build then solve, sequentially |
 | `auto-build` | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
 | `dataset-select` | **implemented** | FPS / random / stratified-holdout sampling |
@@ -190,12 +190,11 @@ job. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contra
 | `qe-relabel` | **implemented** | Submit Quantum ESPRESSO single-point jobs; `--collect` converts output to `.xyzf` |
 | `submit` | **implemented** | Generic Slurm submit/status/cancel/dry-run |
 | `al-run` | **implemented** | Launch al_driver's own active-learning loop (`main.py`) as a detached background process |
-| `al-select` | planned | Diversity-based active-learning batch selection (wraps `gen_selections.py`) |
+| `al-select` | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` (wraps `gen_selections.py`); needs the `al-select` extra (`matplotlib`/`cycler`) |
 
-The one remaining stub (`al-select`) already registers a real subcommand
-(`--describe` works, the CLI contract is fixed) that echoes its parsed
-input — swap the stub for real logic without changing how callers invoke
-it. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md#phasing).
+All stages are implemented now. See
+[docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md#phasing)
+for the build history.
 
 ---
 

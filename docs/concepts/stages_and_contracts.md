@@ -116,9 +116,15 @@ Build order, and why:
    surrounding stage contract was already proven stable. The DLARS
    cliff-detection log parser (`stages/_cliff_monitor.py`) is deliberately
    pure log-parsing with zero Slurm dependency, unit-tested against
-   synthetic log fixtures — built ahead of, and still not yet wired into,
-   a live `solve --algorithm dlars` submission (`amat-build`/`solve`
-   remain local-only; this is the one piece of the original plan not done).
+   synthetic log fixtures — then wired into a *live* `solve --algorithm
+   dlars` submission (`stages/_dlars_hpc.py`, `amat-build --machine`).
+   Validated against a real Slurm job on Dane, which also caught two real
+   bugs a mocked-only test never would have: a `walltime_hours` float
+   reaching `sbatch -t` unconverted (invalid Slurm time syntax), and a
+   `normalize=true` default that `dlars` itself warns against and that
+   caused an immediate real failure the cliff monitor correctly cancelled
+   — see `docs/commands/solve.md` and
+   `docs/concepts/machine_profiles.md#shared-filesystem-required-for-real-hpc-submissions`.
 4. **Dataset tooling + LAMMPS + sweep + model-build** — `dataset-select`
    (FPS/random/stratified), `lammps-run` (validated three ways: standalone
    `chimescalc` binary, ctypes evaluator, and LAMMPS all agree on the same
@@ -130,9 +136,11 @@ Build order, and why:
    the registry design kept on file for *if* a second QM code joins later).
 6. **`al-run`** — launches al_driver's own `main.py` as a detached
    background process (see below), rather than reimplementing its
-   orchestration. `al-select` (a standalone wrapper around al_driver's
-   diversity-selection logic, for use outside a full driver cycle) remains
-   a stub.
+   orchestration. **`al-select`** — a standalone wrapper around al_driver's
+   own `gen_subset` Metropolis-MC diversity selector, imported and called
+   in-process (not reimplemented), for use outside a full driver cycle;
+   see `docs/commands/al-select.md`. This was the last remaining stub and
+   is now implemented, closing out this phasing list.
 
 ## Why not al_driver's loop directly — and where `al-run` fits
 
