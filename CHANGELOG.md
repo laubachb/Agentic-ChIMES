@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Claude Code agent setup + clean-stdout CLI contract
+
+- **CLI stdout is now exactly one JSON object.** Everything a stage or its
+  native libraries write to fd 1 (chimes_calculator's C++ banner in
+  `evaluate`/`al-select`/`lammps-run`, al_driver's progress prints) is
+  diverted at the file-descriptor level to `<output-dir>/<stage>.log`, returned
+  as `stage_log` when non-empty. Found because a real `al-select` call put
+  ~1,600 lines ahead of its JSON, which an agent cannot parse. Errors are now
+  `{"error", "log", "log_tail"}`. Regression-tested in a real subprocess
+  (`tests/unit/test_cli_stdout_contract.py`).
+- **Claude Code integration**: `CLAUDE.md` (rules + how to drive the CLI),
+  four skills in `.claude/skills/` (`chimes-auto-build`, `chimes-build-model`,
+  `chimes-hpc-jobs`, `chimes-active-learning`), two subagents in
+  `.claude/agents/` (`chimes-job-monitor`, a read-only Haiku status checker;
+  `chimes-fit-reviewer`, an independent result reviewer), and shared
+  permissions in `.claude/settings.json` (allow read-only/local work; ask
+  before anything that spends allocation; deny `scancel -u` and edits to
+  `codes/`/`deps/`). `tests/unit/test_claude_setup.py` guards all of it
+  against rot. New page `docs/concepts/claude_code_integration.md`.
+- README: added a "Using it with Claude Code" section; fixed the stage-
+  contract text that still said `--hpc` (the flag is `--machine`) and that no
+  stage calls another (the composites do).
+
 ## Unreleased — `al-select` implemented, closing out the last stub
 
 - **`al-select`** now really wraps al_driver's own Metropolis-MC

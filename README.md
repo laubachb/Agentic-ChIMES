@@ -156,7 +156,11 @@ Every `chimes-agent <stage>` subcommand:
 
 - takes input via `--json-in FILE` or discrete flags (never both silently —
   `--json-in` overrides matching flags),
-- writes one JSON object to stdout or `--json-out FILE`,
+- writes **exactly one JSON object** to stdout or `--json-out FILE` — anything
+  else a stage or its native libraries print (chimes_calculator's banner,
+  al_driver's progress output) is diverted to `<output-dir>/<stage>.log`,
+  reported back as `stage_log`; failures are `{"error", "log", "log_tail"}`
+  with exit code 1,
 - supports `--describe` to print its JSON Schema + summary without running,
 - if it writes files, takes `--output-dir` and is **idempotent** there: a
   second invocation with the same inputs short-circuits and reprints the
@@ -165,11 +169,25 @@ Every `chimes-agent <stage>` subcommand:
   al_driver's append-only, substring-parsed `restart.dat` with something an
   agent can actually introspect),
 - if it submits to HPC, supports `--dry-run` to render (not submit) the
-  sbatch script, and `--hpc {dane,stampede3,<your-profile.yaml>}` to pick
+  sbatch script, and `--machine {dane,stampede3,<your-profile.yaml>}` to pick
   the machine.
 
-No stage calls another stage internally — composing them is the caller's
-job. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md).
+Primitive stages don't call one another — composing them is the caller's
+job. The explicitly-named composites (`model-build`, `sweep`, `auto-build`)
+are the exception, and say so. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md).
+
+---
+
+## Using it with Claude Code
+
+The repo ships its own agent setup: `CLAUDE.md` (rules + how to drive the
+CLI), four skills in `.claude/skills/` (auto-build, hands-on model building,
+HPC jobs, active learning), two subagents in `.claude/agents/` (a cheap
+read-only job monitor and an independent fit reviewer), and shared
+permissions in `.claude/settings.json`. Open Claude Code in this directory
+and ask in plain language, e.g. *"build a ChIMES model from
+`configs.xyzf`, labeling with QE on Dane"*. See
+[docs/concepts/claude_code_integration.md](docs/concepts/claude_code_integration.md).
 
 ---
 

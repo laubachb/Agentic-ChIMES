@@ -21,6 +21,24 @@ gets for free: `--json-in`, `--json-out`, `--describe`, `--force`,
 `--dry-run`, and (unless a module sets `USES_OUTPUT_DIR = False`)
 `--output-dir`.
 
+### stdout carries exactly one JSON object
+
+`cli.main` runs each stage with file descriptor 1 redirected to
+`<output-dir>/<stage>.log` (a temp file when there is no `--output-dir`),
+restoring it only to print the result. This has to happen at the
+descriptor level, not by reassigning `sys.stdout`: chimes_calculator's C++
+library and al_driver's `print`s write to fd 1 directly, and one
+`al-select` call otherwise emitted ~1,600 lines ahead of the JSON, which a
+tool-calling agent cannot parse. Consequences for callers:
+
+- Success: the normal result, plus `stage_log` *only if* the stage
+  produced output (quiet stages leave no log).
+- Failure: `{"error": ..., "log": <path>, "log_tail": <last 20 lines>}`,
+  exit code 1. The tail is usually enough to diagnose without opening the log.
+- Stderr is untouched (Python warnings, etc.).
+
+Covered by `tests/unit/test_cli_stdout_contract.py`.
+
 ## Why JSON in, JSON out
 
 The point is that a stage is equally usable by a human typing flags and by

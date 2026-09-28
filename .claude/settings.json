@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chimes-agent *)",
+      "Bash(python3 -m agentic_chimes.cli *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(pytest *)",
+      "Bash(mkdocs build *)",
+      "Bash(squeue *)",
+      "Bash(sacct *)",
+      "Bash(sinfo *)",
+      "Bash(lfs quota *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "ask": [
+      "Bash(chimes-agent submit *)",
+      "Bash(chimes-agent qe-relabel *)",
+      "Bash(chimes-agent al-run *)",
+      "Bash(chimes-agent auto-build *)",
+      "Bash(chimes-agent *--machine*)",
+      "Bash(scancel *)",
+      "Bash(sbatch *)"
+    ],
+    "deny": [
+      "Bash(scancel -u*)",
+      "Bash(scancel --user*)",
+      "Bash(rm -rf codes*)",
+      "Bash(rm -rf deps*)",
+      "Edit(codes/**)",
+      "Edit(deps/**)",
+      "Write(codes/**)",
+      "Write(deps/**)"
+    ]
+  }
+}

@@ -15,9 +15,12 @@ No stage chains into another here -- composing stages is the caller's
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 from .stages import _manifest
@@ -92,6 +95,44 @@ def _emit(result: dict, args: argparse.Namespace) -> None:
         print(text)
 
 
+@contextlib.contextmanager
+def _stage_output_to_log(log_path: Path):
+    """Route everything a stage writes to fd 1 into `log_path`, so stdout
+    stays reserved for the one JSON result object. Works at the file-
+    descriptor level on purpose: chimes_calculator's C++ library and
+    al_driver's `print`s write to stdout directly (~1,600 lines of banner/
+    progress for one al-select call), which would otherwise land ahead of
+    the JSON and make it unparseable for an agent."""
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    log_fd = os.open(str(log_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.dup2(log_fd, 1)
+        yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(saved_fd, 1)
+        os.close(saved_fd)
+        os.close(log_fd)
+
+
+def _log_tail(log_path: Path, n: int = 20) -> str:
+    try:
+        return "\n".join(log_path.read_text(errors="replace").splitlines()[-n:])
+    except OSError:
+        return ""
+
+
+def _stage_log_path(args, stage_name: str) -> Path:
+    if args._uses_output_dir and args.output_dir:
+        out = Path(args.output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        return out / f"{stage_name}.log"
+    fd, path = tempfile.mkstemp(prefix=f"chimes-agent-{stage_name}-", suffix=".log")
+    os.close(fd)
+    return Path(path)
+
+
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -124,18 +165,29 @@ def main(argv=None) -> int:
             _emit(prior["outputs"], args)
             return 0
 
+    log_path = _stage_log_path(args, mod.NAME)
     try:
-        result = mod.run(args)
+        with _stage_output_to_log(log_path):
+            result = mod.run(args)
     except Exception as exc:  # noqa: BLE001 - surface as structured error, not a traceback the caller has to parse
         if args._uses_output_dir and args.output_dir:
             _manifest.finish(args.output_dir, mod.NAME, input_echo, {"error": str(exc)}, status="failed")
-        _emit({"error": str(exc)}, args)
+        error = {"error": str(exc), "log": str(log_path)}
+        tail = _log_tail(log_path)
+        if tail:
+            error["log_tail"] = tail
+        _emit(error, args)
         return 1
 
     if args._uses_output_dir and args.output_dir:
         _manifest.finish(args.output_dir, mod.NAME, input_echo, result, status="done")
 
-    _emit(result, args)
+    emitted = dict(result)
+    if log_path.exists() and log_path.stat().st_size > 0:
+        emitted["stage_log"] = str(log_path)
+    else:
+        log_path.unlink(missing_ok=True)
+    _emit(emitted, args)
     return 0
 
 

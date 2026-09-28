@@ -1,0 +1,76 @@
+# Agentic ChIMES
+
+`chimes-agent` is a tool-calling CLI for building ChIMES machine-learned
+interatomic potentials end to end. You (the agent) drive it: run a stage,
+read its JSON, decide the next stage. The CLI does not chain stages or make
+judgment calls for you (except `auto-build`, which is explicit about it).
+
+## How to drive it
+
+- One subcommand per stage. **`chimes-agent <stage> --describe` is the source
+  of truth for a stage's inputs/outputs** — read it instead of guessing flags.
+  Stages: `setup`, `dataset-select`, `qe-relabel`, `fm-setup-gen`,
+  `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate`,
+  `lammps-run`, `submit`, `al-select`, `al-run`.
+- **stdout is exactly one JSON object** (errors are `{"error", "log",
+  "log_tail"}` with exit code 1). All native-library and subprocess noise is
+  diverted to `<output-dir>/<stage>.log`, whose path comes back as
+  `stage_log`. Read that log only when something looks wrong.
+- Give every file-writing stage an `--output-dir`. Re-invoking with identical
+  inputs short-circuits via a manifest; different inputs at the same path
+  fail loudly until you pass `--force`. Use one directory per experiment.
+- Prefer `--json-in file.json` over long flag lists for anything with nested
+  values (`--order`, `--pair-cutoffs`, `--order-grid`, `--masses`).
+- Long-running stages block until done: `auto-build`, `sweep` (with
+  `--machine`), `solve --algorithm dlars|dlasso`, `amat-build --machine`. Run
+  those with the Bash tool's `run_in_background`, then check the output
+  file — do not sleep-poll. `al-run` is the exception: it detaches itself
+  and returns a PID.
+- Stages with real cost accept `--dry-run` (renders the sbatch script without
+  submitting). Do this first. Caveat: `auto-build --dry-run` only previews
+  the QE submission, not the rest of the pipeline.
+
+## Playbooks (skills)
+
+Load the matching skill before starting that kind of task:
+
+- `chimes-auto-build` — unlabeled or labeled configs → one optimal model
+- `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
+- `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
+- `chimes-active-learning` — `al-select` / `al-run` / stabilizing a model
+
+Subagents: `chimes-job-monitor` (cheap Slurm/log status checks — delegate
+waiting-and-checking to it) and `chimes-fit-reviewer` (independent read of a
+finished sweep/evaluate result before you recommend a model).
+
+## Rules that prevent expensive mistakes
+
+- **Never edit `codes/` or `deps/`.** They are gitignored clones of three LLNL
+  forks and built third-party code, recreated by `chimes-agent setup`.
+- **HPC job I/O must live on a shared filesystem (`/p/lustre2/$USER/...`),
+  never `/tmp`** — compute nodes cannot see a login node's local disk, and
+  the job will report COMPLETED with no output.
+- **lustre2 limits file count, not space (~1.05M files).** Never write one
+  file per frame at scale; pack into a single `.xyzf`. Delete runaway logs
+  (`dlars.log`, `traj.txt`) promptly. Archive to `/p/lustre3/$USER`.
+- **On Dane always request a full node** (`--ntasks-per-node 112`); a bare
+  `-N 1` is 1 CPU + 2.3 GB. The profile enforces this — don't fight it.
+- **DLARS: leave `--normalize` at its default (false).** `true` fails
+  immediately with MKL errors (confirmed on a real job).
+- Units are fixed: energy kcal/mol, force hartree/bohr in training files.
+  QE output (Ry, Ry/bohr) is converted by `qe-relabel --collect`.
+- Cutoff derivation (`auto-build`) and LAMMPS data files support
+  **orthorhombic boxes only**.
+- Don't commit, push, or open PRs unless asked.
+
+## Working on this repo itself
+
+- Tests: `pytest tests/unit` (no HPC needed; tests needing built components
+  skip cleanly). Docs: `mkdocs build --strict` must stay warning-free.
+- Every user-visible change updates `CHANGELOG.md` and the matching
+  `docs/commands/<stage>.md`. Stage source is `src/agentic_chimes/stages/`;
+  a stage exposes `NAME`, `SUMMARY`, `SCHEMA`, `add_arguments`, `run`.
+- Machine specifics live in `src/agentic_chimes/machines/profiles/*.yaml`,
+  never hard-coded in stages.
+- Full docs: `docs/` (searchable site via `mkdocs serve`). Architecture:
+  `docs/concepts/stages_and_contracts.md`.

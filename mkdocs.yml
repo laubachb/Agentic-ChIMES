@@ -63,6 +63,7 @@ nav:
       - concepts/qm_driver_plugins.md
       - concepts/units_and_conventions.md
       - concepts/cutoffs_and_lambdas.md
+      - concepts/claude_code_integration.md
   - Commands:
       - commands/index.md
       - setup: commands/setup.md

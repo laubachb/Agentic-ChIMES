@@ -29,3 +29,6 @@ site/
 .vscode/
 .idea/
 .DS_Store
+
+# Per-user Claude Code overrides (the shared .claude/settings.json IS committed)
+.claude/settings.local.json
