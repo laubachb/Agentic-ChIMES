@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased — data selection and curation agent
+
+- **Data agent**: `chimes-data-curator` subagent + `chimes-data-curation`
+  playbook skill (plan → search → fetch/generate → curate →
+  `data_manifest.json`; returns decisions and QE dry-runs, never submits).
+  New `chimes-study` skill lays out the five-phase study (plan, data,
+  hyperparameters, build, active learning), the study directory and handoff
+  files, with the data phase wired to the new agent.
+- **New stages**:
+  - `data-search` searches the ColabFit catalog on Hugging Face (~500 datasets,
+    one schema, cached) by elements/method. It never downloads configurations,
+    ranks by relevance, and attaches notes on what each dataset family really
+    contains.
+  - `data-fetch` pulls from `colabfit:<repo>` or local DFT files into one
+    `.xyzf` (kcal/mol, hartree/bohr) plus provenance. It uses a two-pass HTTP
+    range read and seeded uniform sampling, enforces one level of theory, and
+    has a structure-only `relabel` mode.
+  - `data-generate` builds orthorhombic ≥8 Å supercells with substitution,
+    strain and rattle for QE labeling.
+  - `data-curate` merges only provenance-compatible pools. It filters
+    duplicates, isolated atoms, vacuum/cluster frames, overlaps, force outliers
+    and energy outliers (per-element reference fit, MAD plus an absolute floor),
+    reports per-pair distance coverage and `N_LAYERS` needs, does an FPS
+    subsample and stratified split, and writes `data_manifest.json`.
+- **`qe-relabel`**: `--kspacing` (per-frame k-grid; a fixed grid across
+  different cell sizes gives inconsistent energies); collect writes
+  `provenance.json` keyed on a hash of the DFT settings, so batches with
+  identical settings (e.g. AL rounds) merge and others are refused.
+- **Fixed**: `.xyzf` triclinic frames were written with `NON-ORTHO`;
+  chimes_lsq only recognises `NON_ORTHO` (ClassDefs.C) and would have read
+  the frame as orthorhombic with a garbage box. Reader accepts both; tested
+  against chimes_lsq's own `nonorth2` fixture.
+- Validated on real data: Cu-Zr from MatPES-PBE-2025.2 (169 frames → 152
+  after removing 8 isolated atoms, 8 vacuum clusters, 1 duplicate), with
+  labels checked exactly against recomputation in tests (EMT stand-in).
+  Found and handled: HF anonymous rate limiting on shared lab IPs (token
+  support, resolve-URL downloads, incremental catalog refresh) and a
+  ColabFit dataset (`UNEP_v1_2023_train`) whose parquet is corrupt at the
+  source despite a matching checksum (skipped, remembered, flagged in search).
+- New `data` extra (ase, pyarrow, huggingface_hub, fsspec, aiohttp); CI now
+  installs it so the data tests run there.
+
 ## Unreleased — Claude Code agent setup + clean-stdout CLI contract
 
 - **CLI stdout is now exactly one JSON object.** Everything a stage or its

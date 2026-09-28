@@ -36,6 +36,8 @@ flags rather than duplicating them, so they don't go stale:
 
 | Skill | Triggers on |
 |---|---|
+| `chimes-study` | an end-to-end goal ("I need a potential for X"): orchestrates the five study phases, layout, handoffs, approvals |
+| `chimes-data-curation` | finding, fetching, generating and curating training data (the data agent's playbook) |
 | `chimes-auto-build` | "build me a model from these configs", one-shot pipeline, QE labeling then fit |
 | `chimes-build-model` | hands-on fitting, choosing cutoffs/orders, sweeps, diagnosing a bad fit |
 | `chimes-hpc-jobs` | anything touching Slurm, QE, DLARS, lustre quota, or a job that seems stuck |
@@ -43,6 +45,11 @@ flags rather than duplicating them, so they don't go stale:
 
 **Subagents:**
 
+- `chimes-data-curator` — the data agent. Plans the dataset from the
+  request, searches open databases, fetches or generates structures,
+  curates them, and returns `data_manifest.json` plus any decision it
+  can't make (label source, QE submission, which it only dry-runs). See
+  [The data phase](data_curation.md).
 - `chimes-job-monitor` — read-only, runs on the small fast model. Claude
   hands it a job id or directory and gets back a ten-line status instead of
   raw `squeue`/`sacct`/log output. This is the right place for "wait and

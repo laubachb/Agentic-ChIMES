@@ -4,7 +4,9 @@ Format (confirmed against real fixtures in
 `codes/chimes_lsq-LLfork/test_suite-lsq/{test_4atoms.2,stress-and-ener-2b1}/`):
 per frame, a natoms line, then a comment line of
 `Lx Ly Lz [sxx syy szz sxy sxz syz] [energy]` (or, for a non-orthorhombic
-cell, `NON-ORTHO <9 lattice components> [sxx syy szz sxy sxz syz] [energy]`),
+cell, `NON_ORTHO <9 lattice components: a, b, c row vectors> [sxx syy szz sxy sxz syz] [energy]`;
+chimes_lsq matches the underscore spelling exactly -- ClassDefs.C tests
+`tokens[0] == "NON_ORTHO"` -- and its fixtures use lower-triangular cells),
 then `natoms` rows of `<element> x y z fx fy fz`. Units follow whatever the
 file's own convention is (this module does not convert -- see
 converters.units for that).
@@ -48,7 +50,7 @@ def read_xyzf(path) -> list:
         comment = lines[i].split()
         i += 1
 
-        non_ortho = comment[0].upper() == "NON-ORTHO"
+        non_ortho = comment[0].upper() in ("NON_ORTHO", "NON-ORTHO")
         if non_ortho:
             nums = [float(x) for x in comment[1:]]
             box = [nums[0:3], nums[3:6], nums[6:9]]
@@ -96,7 +98,7 @@ def write_xyzf(frames: list, path) -> None:
         lines.append(str(fr.natoms))
         if fr.non_ortho:
             box_tokens = [str(x) for row in fr.box for x in row]
-            comment = ["NON-ORTHO"] + box_tokens
+            comment = ["NON_ORTHO"] + box_tokens
         else:
             comment = [str(x) for x in fr.box]
         if fr.stress is not None:

@@ -41,7 +41,8 @@ SCHEMA = {
         "pseudopotentials": {"type": "object", "additionalProperties": {"type": "string"}, "description": "element -> .upf file path"},
         "ecutwfc": {"type": "number", "description": "Ry"},
         "ecutrho": {"type": ["number", "null"], "description": "Ry; default 4*ecutwfc"},
-        "kpoints": {"type": "array", "items": {"type": "integer"}, "default": [1, 1, 1]},
+        "kpoints": {"type": "array", "items": {"type": "integer"}, "default": [1, 1, 1], "description": "One fixed grid for every frame; ignored when kspacing is set."},
+        "kspacing": {"type": ["number", "null"], "description": "Max reciprocal-space spacing in 1/Angstrom (2*pi included, VASP KSPACING convention); picks a grid per frame, n_i = ceil(|b_i|/kspacing). Use this when cell sizes vary, so every frame gets the same k-point density."},
         "smearing": {"type": "string", "default": "gaussian"},
         "degauss": {"type": "number", "default": 0.01},
         "conv_thr": {"type": "number", "default": 1.0e-8},
@@ -64,6 +65,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--ecutwfc", type=float, default=None)
     parser.add_argument("--ecutrho", type=float, default=None)
     parser.add_argument("--kpoints", type=lambda s: [int(x) for x in s.split(",")], default=[1, 1, 1])
+    parser.add_argument("--kspacing", type=float, default=None)
     parser.add_argument("--smearing", default="gaussian")
     parser.add_argument("--degauss", type=float, default=0.01)
     parser.add_argument("--conv-thr", dest="conv_thr", type=float, default=1.0e-8)
@@ -76,6 +78,49 @@ def add_arguments(parser) -> None:
 
 
 _MANIFEST_NAME = "qe_relabel_manifest.json"
+
+
+def kgrid_from_spacing(frame, kspacing: float) -> list:
+    import math
+
+    import numpy as np
+
+    cell = np.asarray(frame.box if frame.non_ortho else np.diag(frame.box), dtype=float)
+    recip = 2 * math.pi * np.linalg.inv(cell).T
+    return [max(1, math.ceil(np.linalg.norm(b) / kspacing)) for b in recip]
+
+
+def _dft_settings(args) -> dict:
+    """Everything that changes the absolute energy scale. Two label batches
+    are only mergeable when these match exactly."""
+    import hashlib
+
+    pps = {el: Path(path).name for el, path in sorted(args.pseudopotentials.items())}
+    pp_hashes = {}
+    for el, path in sorted(args.pseudopotentials.items()):
+        try:
+            pp_hashes[el] = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
+        except OSError:
+            pp_hashes[el] = None
+    kspacing = getattr(args, "kspacing", None)
+    return {
+        "code": "Quantum ESPRESSO pw.x",
+        "pseudopotentials": pps,
+        "pseudopotential_sha256_12": pp_hashes,
+        "ecutwfc_ry": args.ecutwfc,
+        "ecutrho_ry": getattr(args, "ecutrho", None) or 4 * args.ecutwfc,
+        "kspacing_inv_ang": kspacing,
+        "kpoints": None if kspacing else (getattr(args, "kpoints", None) or [1, 1, 1]),
+        "smearing": getattr(args, "smearing", "gaussian") or "gaussian",
+        "degauss_ry": getattr(args, "degauss", 0.01),
+        "conv_thr": getattr(args, "conv_thr", 1.0e-8),
+    }
+
+
+def _settings_key(settings: dict) -> str:
+    import hashlib
+
+    return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:12]
 
 
 def _render_pw_in(frame, elements, masses, pseudopotentials, *, ecutwfc, ecutrho, kpoints, smearing, degauss, conv_thr) -> str:
@@ -154,7 +199,8 @@ def _submit(args) -> dict:
             args.pseudopotentials,
             ecutwfc=args.ecutwfc,
             ecutrho=getattr(args, "ecutrho", None),
-            kpoints=getattr(args, "kpoints", None) or [1, 1, 1],
+            kpoints=(kgrid_from_spacing(frames[frame_idx], args.kspacing) if getattr(args, "kspacing", None)
+                     else getattr(args, "kpoints", None) or [1, 1, 1]),
             smearing=getattr(args, "smearing", "gaussian") or "gaussian",
             degauss=getattr(args, "degauss", 0.01),
             conv_thr=getattr(args, "conv_thr", 1.0e-8),
@@ -175,6 +221,8 @@ def _submit(args) -> dict:
         "structure_xyzf": str(Path(args.structure_xyzf).resolve()),
         "frame_indices": frame_indices,
         "frame_dirs": frame_dirs,
+        "elements": list(args.elements),
+        "dft_settings": _dft_settings(args),
     }
     (work_dir / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
 
@@ -244,9 +292,37 @@ def _collect(args) -> dict:
     out_path = work_dir / "labeled.xyzf"
     xyzf_io.write_xyzf(labeled, out_path)
 
+    provenance_path = None
+    settings = manifest.get("dft_settings")
+    if settings:
+        converged_idx = [e["frame_index"] for e in report if e["status"] == "converged"]
+        struct_prov = Path(manifest["structure_xyzf"]).parent / "provenance.json"
+        parent_ids = json.loads(struct_prov.read_text()).get("frame_ids") if struct_prov.is_file() else None
+        ids = [parent_ids[i] if parent_ids and i < len(parent_ids) else f"structure#{i}" for i in converged_idx]
+        pp = ", ".join(f"{el}:{name}" for el, name in settings["pseudopotentials"].items())
+        method = f"DFT-QE [{pp}; ecutwfc {settings['ecutwfc_ry']} Ry; " + (
+            f"kspacing {settings['kspacing_inv_ang']}/A" if settings["kspacing_inv_ang"] else f"k {settings['kpoints']}") + "]"
+        provenance = {
+            # Keyed on the settings hash, not the work dir: batches labeled with
+            # identical settings (e.g. successive active-learning rounds) merge
+            # in data-curate; anything else is refused.
+            "source": f"qe:{_settings_key(settings)}",
+            "source_metadata": {"name": f"qe-relabel {work_dir}", "structures": manifest["structure_xyzf"]},
+            "level_of_theory": {"methods": {method: len(labeled)}, "software": {"Quantum ESPRESSO": len(labeled)}},
+            "dft_settings": settings,
+            "label_policy": "source",
+            "units": {"energy": "kcal/mol", "forces": "hartree/bohr", "positions": "angstrom"},
+            "elements": manifest.get("elements"),
+            "n_frames": len(labeled),
+            "frame_ids": ids,
+        }
+        provenance_path = work_dir / "provenance.json"
+        provenance_path.write_text(json.dumps(provenance, indent=1))
+
     n_converged = sum(1 for e in report if e["status"] == "converged")
     return {
         "labeled_xyzf": str(out_path),
+        "provenance": str(provenance_path) if provenance_path else None,
         "n_total": len(report),
         "n_converged": n_converged,
         "n_missing_or_failed": len(report) - n_converged,

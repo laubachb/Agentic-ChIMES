@@ -201,6 +201,10 @@ and ask in plain language, e.g. *"build a ChIMES model from
 | `solve` | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
 | `model-build` | **implemented** | Complete build: amat-build then solve, sequentially |
 | `auto-build` | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
+| `data-search` | **implemented** | Search open DFT datasets (ColabFit on Hugging Face) for a chemical system |
+| `data-fetch` | **implemented** | Fetch matching configurations from a dataset or local DFT files into one `.xyzf` + provenance |
+| `data-generate` | **implemented** | Strained/rattled/substituted supercells for QE labeling |
+| `data-curate` | **implemented** | Filter, analyze coverage, subsample and split into a base dataset + `data_manifest.json` |
 | `dataset-select` | **implemented** | FPS / random / stratified-holdout sampling |
 | `sweep` | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm + comparison table (not auto-tuning) |
 | `evaluate` | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |

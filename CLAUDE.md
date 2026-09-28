@@ -9,7 +9,8 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 
 - One subcommand per stage. **`chimes-agent <stage> --describe` is the source
   of truth for a stage's inputs/outputs** — read it instead of guessing flags.
-  Stages: `setup`, `dataset-select`, `qe-relabel`, `fm-setup-gen`,
+  Stages: `setup`, `data-search`, `data-fetch`, `data-generate`,
+  `data-curate`, `dataset-select`, `qe-relabel`, `fm-setup-gen`,
   `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate`,
   `lammps-run`, `submit`, `al-select`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
@@ -34,12 +35,17 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 
 Load the matching skill before starting that kind of task:
 
+- `chimes-study` — an end-to-end goal ("I need a potential for X"): the
+  orchestration plan, study layout, phase handoffs and approval gates
+- `chimes-data-curation` — find, fetch, generate and curate training data
 - `chimes-auto-build` — unlabeled or labeled configs → one optimal model
 - `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
 - `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
 - `chimes-active-learning` — `al-select` / `al-run` / stabilizing a model
 
-Subagents: `chimes-job-monitor` (cheap Slurm/log status checks — delegate
+Subagents: `chimes-data-curator` (the data phase: plan → search → fetch/
+generate → curate → `data_manifest.json`; returns decisions it cannot make),
+`chimes-job-monitor` (cheap Slurm/log status checks — delegate
 waiting-and-checking to it) and `chimes-fit-reviewer` (independent read of a
 finished sweep/evaluate result before you recommend a model).
 
@@ -57,6 +63,12 @@ finished sweep/evaluate result before you recommend a model).
   `-N 1` is 1 CPU + 2.3 GB. The profile enforces this — don't fight it.
 - **DLARS: leave `--normalize` at its default (false).** `true` fails
   immediately with MKL errors (confirmed on a real job).
+- **One level of theory per fit.** Never merge labels from different
+  datasets, codes or DFT settings; `data-curate` refuses by default. Active
+  learning must reuse the base set's QE settings (`provenance.json`).
+- Hugging Face rate-limits anonymous downloads per IP (shared on lab
+  networks). If `data-*` stages report HTTP 429, ask the user to set
+  `HF_TOKEN` rather than retrying in a loop.
 - Units are fixed: energy kcal/mol, force hartree/bohr in training files.
   QE output (Ry, Ry/bohr) is converted by `qe-relabel --collect`.
 - Cutoff derivation (`auto-build`) and LAMMPS data files support

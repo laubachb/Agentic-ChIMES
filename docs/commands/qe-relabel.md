@@ -64,7 +64,13 @@ bottleneck.
 - `--pseudopotentials '{"C":"/path/C.upf",...}'` (required)
 - `--ecutwfc RY` (required), `--ecutrho RY` (default `4*ecutwfc`)
 - `--kpoints nx,ny,nz` (default `1,1,1` — a Γ-only/small grid; override for
-  small unit cells)
+  small unit cells). One grid for every frame.
+- `--kspacing K` (1/Å, 2π included — VASP `KSPACING` convention) — picks a
+  grid per frame, `n_i = ceil(|b_i| / K)`, and overrides `--kpoints`. **Use
+  this whenever cell sizes differ** (e.g. structures from a database): a fixed
+  grid gives small cells far sparser sampling than large ones, and the
+  resulting energies are not consistent with each other. ~0.2-0.3 /Å suits
+  metals.
 - `--smearing`, `--degauss`, `--conv-thr`
 - `--machine`, `--queue`, `--walltime-hours`, `--nodes`, `--ntasks-per-node`
 - `--dry-run` (generic flag) — render the job + `pw.in` files, don't submit
@@ -91,6 +97,7 @@ bottleneck.
 ```json
 {
   "labeled_xyzf": "./qe_run/labeled.xyzf",
+  "provenance": "./qe_run/provenance.json",
   "n_total": 20, "n_converged": 18, "n_missing_or_failed": 2,
   "report": [
     {"frame_index": 0, "frame_dir": "./qe_run/frame_0000", "status": "converged"},
@@ -98,6 +105,13 @@ bottleneck.
   ]
 }
 ```
+
+Collect also writes `provenance.json` next to `labeled.xyzf`, recording
+the DFT settings that fix the energy scale (pseudopotential file names and
+content hashes, cutoffs, k-sampling, smearing) and the originating frame
+ids. Its `source` is `qe:<hash of those settings>`, so `data-curate` merges
+batches labeled with identical settings (e.g. successive active-learning
+rounds) and refuses anything else.
 
 Only `"converged"` frames are written into `labeled_xyzf`; `"status"` is
 one of `converged`, `not_converged` (pw.x ran but didn't reach SCF

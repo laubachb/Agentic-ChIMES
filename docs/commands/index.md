@@ -14,6 +14,10 @@ contract every page below assumes.
 | [`solve`](solve.md) | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
 | [`model-build`](model-build.md) | **implemented** | Complete build: amat-build then solve, sequentially |
 | [`auto-build`](auto-build.md) | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
+| [`data-search`](data-search.md) | **implemented** | Search open DFT datasets (ColabFit on Hugging Face) for a chemical system |
+| [`data-fetch`](data-fetch.md) | **implemented** | Fetch matching configurations from a dataset or local DFT files into one `.xyzf` + provenance |
+| [`data-generate`](data-generate.md) | **implemented** | Strained/rattled/substituted supercells for QE labeling |
+| [`data-curate`](data-curate.md) | **implemented** | Filter, analyze coverage, subsample and split into a base dataset + `data_manifest.json` |
 | [`dataset-select`](dataset-select.md) | **implemented** | FPS / random / stratified-holdout sampling |
 | [`sweep`](sweep.md) | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm |
 | [`evaluate`](evaluate.md) | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |

@@ -64,6 +64,7 @@ nav:
       - concepts/units_and_conventions.md
       - concepts/cutoffs_and_lambdas.md
       - concepts/claude_code_integration.md
+      - concepts/data_curation.md
   - Commands:
       - commands/index.md
       - setup: commands/setup.md
@@ -72,6 +73,10 @@ nav:
       - solve: commands/solve.md
       - model-build: commands/model-build.md
       - auto-build: commands/auto-build.md
+      - data-search: commands/data-search.md
+      - data-fetch: commands/data-fetch.md
+      - data-generate: commands/data-generate.md
+      - data-curate: commands/data-curate.md
       - dataset-select: commands/dataset-select.md
       - sweep: commands/sweep.md
       - evaluate: commands/evaluate.md

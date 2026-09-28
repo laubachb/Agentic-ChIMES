@@ -27,6 +27,10 @@ from .stages import _manifest
 
 STAGE_MODULE_NAMES = [
     "setup_cmd",
+    "data_search",
+    "data_fetch",
+    "data_generate",
+    "data_curate",
     "dataset_select",
     "qe_relabel",
     "fm_setup_gen",

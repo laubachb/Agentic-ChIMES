@@ -46,6 +46,8 @@ AL_DRIVER_ROOT = CODES_DIR / "al_driver-LLfork"
 AL_DRIVER_SRC = AL_DRIVER_ROOT / "src"
 CHIMES_LSQ_ROOT = CODES_DIR / "chimes_lsq-LLfork"
 CHIMES_CALCULATOR_ROOT = CODES_DIR / "chimes_calculator-LLfork"
+# Downloaded open-data catalogs; gitignored with deps/. Override with AGENTIC_CHIMES_CACHE.
+CACHE_DIR = Path(os.environ.get("AGENTIC_CHIMES_CACHE", str(DEPS_DIR / "cache")))
 
 
 class ComponentNotInstalled(RuntimeError):
