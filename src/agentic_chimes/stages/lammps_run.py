@@ -173,7 +173,10 @@ def run(args) -> dict:
     if nprocs > 1:
         cmd = ["mpirun", "-n", str(nprocs)] + cmd
 
-    proc = subprocess.run(cmd, cwd=str(work_dir), capture_output=True, text=True)
+    from ..hpc.local import singleton_env
+
+    proc = subprocess.run(cmd, cwd=str(work_dir), capture_output=True, text=True,
+                          env=singleton_env() if nprocs == 1 else None)
     (work_dir / "stdout.log").write_text((proc.stdout or "") + (proc.stderr or ""))
 
     if proc.returncode != 0:

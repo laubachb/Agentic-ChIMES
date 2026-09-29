@@ -8,7 +8,14 @@ contract every page below assumes.
 
 | Command | Status | Purpose |
 |---|---|---|
+| [`study`](study.md) | **implemented** | Create a study directory, register phase artifacts, show status |
+| [`usage`](usage.md) | **implemented** | CPU-hours a study used (Slurm via sacct + login-node ledger), charged vs used, by phase |
+| [`benchmark`](benchmark.md) | **implemented** | Strong/weak LAMMPS scaling of the final model → cost model and CPU-hour estimates |
+| [`deploy`](deploy.md) | **implemented** | Package the model: params, LAMMPS example, MODEL_CARD.md |
+| [`study-report`](study-report.md) | **implemented** | Collate a study into REPORT_FACTS.json + REPORT.md |
 | [`setup`](setup.md) | **implemented** | Clone the vendored forks + build/fetch chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO for a machine |
+| [`hyper-analyze`](hyper-analyze.md) | **implemented** | Per-pair distances/RDF → inner cutoffs, Morse lambdas, outer-cutoff candidates, N_LAYERS |
+| [`hyper-search`](hyper-search.md) | **implemented** | Staged search over cutoffs, lambdas, 2b/3b/4b orders; cheapest model statistically tied with the best |
 | [`fm-setup-gen`](fm-setup-gen.md) | **implemented** | Generate `fm_setup.in` from typed parameters (elements, cutoffs, order, fit flags) |
 | [`amat-build`](amat-build.md) | **implemented** (local or `--machine`) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
 | [`solve`](solve.md) | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
@@ -27,4 +34,4 @@ contract every page below assumes.
 | [`al-run`](al-run.md) | **implemented** | Launch al_driver's own active-learning loop as a detached background process |
 | [`al-select`](al-select.md) | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` |
 
-All stages are implemented now.
+All stages are implemented.

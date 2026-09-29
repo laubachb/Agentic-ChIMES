@@ -32,7 +32,7 @@ identical settings merge. Structure-only pools can always be merged.
 |---|---|---|
 | `elements_outside_target` | on | |
 | `duplicate_of:<id>` | on (`--no-dedupe`) | identical geometry to 1e-3 Å |
-| `isolated_atom` | on | no neighbour within the analysis radius: single-atom reference calculations |
+| `isolated_atom` | on | no neighbour, not even its own periodic image, within the analysis radius: single-atom reference calculations in large boxes. Periodic images count as neighbours, so a 1-atom bulk crystal is kept (an early version dropped them) |
 | `min_distance` | < 0.5 Å | unphysical overlap |
 | `low_density` | V/atom > 3× pool median (`--max-volume-ratio`, `--keep-vacuum`) | clusters/molecules in vacuum boxes, common in general databases, wrong for a bulk model |
 | `max_force` | > 50 eV/Å | broken or extreme labels |
@@ -72,7 +72,7 @@ energies), and `data_manifest.json`:
   "level_of_theory": ["DFT-PBE (VASP 6.4.x)"],
   "units": {"energy": "kcal/mol", "forces": "hartree/bohr", "positions": "angstrom"},
   "curated_xyzf": "...", "train_xyzf": "...", "holdout_xyzf": "...",
-  "summary": {"n_frames": 152, "compositions": {"Cu-Zr": 72, "Cu": 44, "Zr": 36},
+  "summary": {"n_frames": 158, "compositions": {"Cu-Zr": 77, "Cu": 43, "Zr": 38},
               "thinnest_cell_width_ang": 2.01, "...": "..."},
   "pairs": {"Cu-Zr": {"n_frames": 72, "min_distance": 2.28, "n_within_1.2x_min": 230, "...": "..."}},
   "fit_hints": {"s_minim_upper_bound": {"Cu-Zr": 2.28},

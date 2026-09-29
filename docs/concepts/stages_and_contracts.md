@@ -100,6 +100,8 @@ Re-invoking a stage against the same `--output-dir`:
   study path with a changed config silently mixes state from two different
   parameterizations.
 - **`--force`** → always re-runs regardless of prior state.
+- **`--dry-run`** → records nothing, so the real run that follows with the
+  same inputs executes instead of short-circuiting to the preview's result.
 
 ## Machine-callable discovery
 
@@ -158,7 +160,25 @@ Build order, and why:
    own `gen_subset` Metropolis-MC diversity selector, imported and called
    in-process (not reimplemented), for use outside a full driver cycle;
    see `docs/commands/al-select.md`. This was the last remaining stub and
-   is now implemented, closing out this phasing list.
+   is now implemented.
+7. **Data phase** — `data-search`, `data-fetch`, `data-generate`,
+   `data-curate` (+ `qe-relabel --kspacing` and provenance), driven by the
+   `chimes-data-curator` subagent; see `docs/concepts/data_curation.md`.
+8. **Hyperparameter phase** — `hyper-analyze` and `hyper-search`, driven by
+   the `chimes-hyperparameter-tuner` subagent. Building it surfaced bugs in
+   earlier stages, all fixed:
+   - `evaluate` mixed force units;
+   - the calculator mishandled cells thinner than the cutoff;
+   - chimes_lsq crashed on mixed cell headers;
+   - pair analysis dropped self-image neighbours, so 1-atom crystals looked
+     like isolated atoms;
+   - local MPI binaries crashed inside Slurm steps;
+   - a dry run blocked the real run's idempotency check.
+9. **Study, benchmark and report phase**: `study` (registry), `usage`
+   (CPU-hours via sacct + login-node ledger), `benchmark` (LAMMPS strong/weak
+   scaling → cost model), `deploy` (model card), `study-report`, driven by the
+   `chimes-benchmark` and `chimes-report-writer` subagents. Documentation was
+   reorganized around using the toolkit (User guide).
 
 ## Why not al_driver's loop directly — and where `al-run` fits
 

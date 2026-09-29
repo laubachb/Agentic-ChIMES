@@ -2,6 +2,8 @@
 
 **Status: implemented** — local algorithms (`svd`, `fast_svd`, `ridge`,
 `fast_ridge`, `ridgecv`, `lasso`, `lassolars`) run as a plain subprocess;
+column-normalized variants (`nsvd`, `nridge`, `nlasso`, `nridgecv`) are
+solved here and written out through `chimes_lsq.py --read_output`;
 `dlars`/`dlasso` submit via `--machine` and are **validated against a real
 Slurm job on Dane** (not just unit-tested), including the cliff monitor
 actually cancelling a real pathological run -- see below.
@@ -43,7 +45,43 @@ for why (found the hard way validating this exact path).
 - `--alpha` (default `1e-4` local / use `1e-5` for dlars — see below)
 - `--eps` (default `1e-5`) — SVD regularization
 - `--weights PATH` — optional per-equation weight file
-- `--folds` (default `4`) — CV folds for `ridgecv`
+- `--folds` (default `4`) — CV folds for `ridgecv` / `nridgecv`
+
+## Column-normalized solvers (`nsvd`, `nridge`, `nlasso`, `nridgecv`)
+
+`chimes_lsq.py`'s local solvers regularize raw columns. ChIMES columns span
+~10⁷ in scale: every cluster distance adds a (1 − r/r_c)³ smoothing factor,
+so 3-body columns are ~10⁻³ and 4-body ~10⁻⁷ of the 2-body scale. A raw
+penalty therefore mostly switches off the many-body terms. The `n*`
+solvers scale columns to unit norm, solve, unscale, save `x.txt`/`Ax.txt`,
+and let `chimes_lsq.py --read_output` write `params.txt`.
+
+- `nsvd` truncates singular values below `eps` × max; `nridge`/`nlasso`
+  use `--alpha` on normalized coefficients.
+- `blocklasso` is `lassolars` (same LassoLars, same `--alpha`) after scaling
+  each *body-order block* so its median column norm matches the 2-body
+  block. Relative scales within a block are kept, so small, noisy columns
+  inside a block are still suppressed, but 3-/4-body terms are no longer
+  penalized just for their scale. It is identical to `lassolars` for a
+  2-body-only basis, and needs `amat-build`'s `fm_setup.log` next to `b.txt`.
+  **Measured on Cu-Zr it was worse**, even for the 3-body model (holdout
+  relative force error 0.63 vs 0.32 for `lassolars`), and 4-body models
+  under it scored 0.65-1.56: the rescaled many-body blocks overfit. It is
+  available in `hyper-search`'s 4-body stage only on request
+  (`--four-body-solvers lassolars,blocklasso`).
+- `nridgecv` chooses α by K-fold cross-validation over whole training frames
+  (using `amat-build`'s `b-labeled.txt`/`natoms.txt` next to `b.txt`),
+  scoring force rows only.
+
+**Measured, and why they are not the default.** On 122 curated MatPES Cu-Zr
+frames (1,581 equations), raw `lassolars` at α = 1e-5 matched or beat every
+normalized solver within noise and never blew up. Normalized solvers,
+freed to use the many-body terms, overfit: holdout relative force error was
+0.43 for `lassolars` versus 1.47 (`nridgecv`) and 1.09 (`nlasso`) for a
+970-coefficient 3+4-body basis. Implicit suppression of small-scale columns
+acts as useful regularization when data is scarce. Consider `n*` solvers
+only when equations greatly outnumber coefficients (≳10×), and compare
+against `lassolars` on the holdout.
 - `--normalize` (dlars/dlasso only, **default false** — see below)
 - `--split-files` (dlars/dlasso only; must match `fm_setup.in`'s `SPLITFI`)
 - `--machine`, `--queue`, `--walltime-hours`, `--nodes`, `--ntasks-per-node` (dlars/dlasso only)

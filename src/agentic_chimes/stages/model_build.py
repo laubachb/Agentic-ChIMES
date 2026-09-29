@@ -78,6 +78,7 @@ def run(args) -> dict:
             nodes=getattr(args, "nodes", 1),
             ntasks_per_node=getattr(args, "ntasks_per_node", None),
             dry_run=False,
+            timeout_s=getattr(args, "timeout_s", None),
             output_dir=output_dir,
         )
     )

@@ -151,12 +151,8 @@ def check_theory(provenances, allow_mixed: bool):
 
 def _geometry(frame, cutoff):
     """(pair -> distances array, min distance or None, thinnest cell width, volume per atom)."""
-    from ase.neighborlist import neighbor_list
-
     atoms = convert.frame_to_atoms(frame)
-    i, j, d = neighbor_list("ijd", atoms, cutoff)
-    mask = i < j
-    i, j, d = i[mask], j[mask], d[mask]
+    i, j, d = convert.unique_pairs(atoms, cutoff)
     sym = np.asarray(frame.symbols)
     pairs = defaultdict(list)
     for a, b, dist in zip(sym[i], sym[j], d):

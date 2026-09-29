@@ -2,13 +2,10 @@
 
 **Status: implemented.**
 
-Computes holdout force/energy RMSE for one or more `params.txt` models,
-in-process via `chimes_calculator`'s serial ctypes API
+Computes holdout force and energy errors for one or more `params.txt`
+models, in-process via `chimes_calculator`'s serial ctypes API
 (`serial_interface/api/chimescalc_serial_py.py`, loaded from its vendored
-path) — no subprocess, no Slurm. Validated against
-`codes/chimes_calculator-LLfork/serial_interface/tests/` fixtures (a
-published force field + config with known reference energy/forces; see
-`tests/unit/test_evaluate.py`).
+path). No subprocess, no Slurm.
 
 ## Usage
 
@@ -27,43 +24,78 @@ chimes-agent evaluate --params modelA/params.txt --params modelB/params.txt \
 ## Flags
 
 - `--params PATH` (repeatable; >1 = committee mode)
-- `--holdout-xyzf PATH` (required) — a ChIMES `.xyzf` file with reference
-  forces/energy (see `io/xyzf.py`)
-- `--max-frames N` — cap the number of frames evaluated
+- `--holdout-xyzf PATH` (required): a ChIMES `.xyzf` with reference forces
+  (hartree/bohr) and, optionally, energies (kcal/mol)
+- `--max-frames N`: cap the number of frames evaluated
+- `--per-frame`: also return each frame's force squared-error sum,
+  reference squared sum and component count (used by `hyper-search` for
+  bootstrap uncertainty)
 
 ## Output
 
 ```json
 {
-  "n_frames": 100,
+  "n_frames": 30,
   "n_models": 1,
+  "reference_force_rms_kcal_mol_ang": 6.58,
   "results": [
-    { "params": "./run1/params.txt", "rmse_force_kcal_mol_ang": 3.21, "rmse_energy_kcal_mol": 0.9 }
+    {"params": "./run1/params.txt",
+     "rmse_force_kcal_mol_ang": 2.90,
+     "relative_force_error": 0.44,
+     "rmse_energy_kcal_mol": 2.31,
+     "rmse_energy_kcal_mol_per_atom": 0.92}
   ],
   "committee_spread": null
 }
 ```
 
+- `relative_force_error` = force RMSE ÷ the RMS of the reference forces. It
+  is comparable across datasets; 1.0 means the model predicts nothing
+  better than zero force.
+- `rmse_energy_kcal_mol_per_atom` is the energy error divided by each
+  frame's atom count before averaging. Use it when frame sizes differ.
+
 With `n_models > 1`, `committee_spread.per_frame_energy_stdev` is the
-stdev across models of each frame's predicted energy — this is the
-concrete plug-in point for a future uncertainty-based active-learning
-selector (diff models on unlabeled candidate frames, pick the
-highest-disagreement ones), deliberately not wired into `al-select` yet.
-See `docs/concepts/qm_driver_plugins.md` for why al_driver's own AL
-selection is diversity-based, not uncertainty-based, today.
+spread across models of each frame's predicted energy: the plug-in point
+for a future uncertainty-based active-learning selector. It is not used by
+`al-select`; see `docs/concepts/qm_driver_plugins.md`.
+
+## Units
+
+Training/holdout `.xyzf` forces are **hartree/bohr** (ChIMES
+`doc/source/units.rst`); `chimes_calculator` predicts **kcal/mol/Å**.
+Reference forces are converted (×1185.8) before comparing. Energies are
+kcal/mol on both sides.
+
+> **Corrected bug.** Before this fix, `evaluate` subtracted the two without
+> converting, so its "force RMSE" was essentially the RMS of the
+> *predicted* forces. Every force RMSE reported by `evaluate`, `sweep` or
+> `auto-build` before the fix, and every choice made on it, is invalid.
+> `tests/unit/test_evaluate.py` now feeds a model's own predictions back as
+> references and requires zero error.
+
+## Small cells are evaluated as exact supercells
+
+`chimes_calculator`'s serial interface is wrong for cells thinner than
+twice the model's outer cutoff, which covers most open-database frames:
+
+- `small=False` misses periodic images: energies were off by ~20 kcal/mol
+  on MatPES Cu-Zr cells.
+- `small=True` gets energies right but sums forces over replicas.
+
+`evaluate` therefore replicates each frame until every perpendicular width
+exceeds 2 × the largest `S_MAXIM` in `params.txt`, evaluates that, divides
+the energy by the number of copies, and keeps the first copy's forces.
+This is exact for a periodic frame, and it reproduced `chimes_lsq`'s own
+training-set predictions (`force.txt`) to 5×10⁻⁶ kcal/mol/Å and
+5×10⁻⁴ kcal/mol on 122 real triclinic frames. `al-select` uses the same
+code path.
 
 ## Prerequisite
 
 Needs `chimescalc_lib` built: `chimes-agent setup --component
 chimes_calculator --machine <name>`.
 
-## Known noise: use `--json-out`, not raw stdout, for programmatic parsing
-
-The vendored ChIMES calculator library prints its own verbose init logging
-(parameter file contents, pair/cluster maps, ...) directly to the process's
-real stdout via C++ `std::cout` on `init_chimes_instance` -- this happens
-below the Python layer, so `evaluate` cannot cleanly suppress it. That
-logging lands *before* this stage's JSON result on stdout. A human reading
-the terminal can just look at the last JSON object; a script or agent
-parsing stdout as JSON should instead pass `--json-out result.json` and
-read that file, which contains only the JSON result.
+The calculator's banner and progress output go to `<output-dir>/evaluate.log`
+(or a temp log), not stdout. Stdout carries only the JSON result, like
+every stage.

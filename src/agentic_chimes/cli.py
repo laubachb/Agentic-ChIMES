@@ -27,6 +27,8 @@ from .stages import _manifest
 
 STAGE_MODULE_NAMES = [
     "setup_cmd",
+    "study",
+    "usage",
     "data_search",
     "data_fetch",
     "data_generate",
@@ -43,6 +45,9 @@ STAGE_MODULE_NAMES = [
     "auto_build",
     "evaluate",
     "lammps_run",
+    "benchmark",
+    "deploy",
+    "study_report",
     "submit",
     "al_select",
     "al_run",
@@ -129,6 +134,42 @@ def _log_tail(log_path: Path, n: int = 20) -> str:
         return ""
 
 
+def _cpu_snapshot():
+    import resource
+    import time
+
+    s, c = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    return time.time(), s.ru_utime + s.ru_stime + c.ru_utime + c.ru_stime
+
+
+def _record_local_usage(args, stage_name: str, t0: float, cpu0: float) -> None:
+    """Append this stage's login-node CPU time to <study>/usage/local.jsonl when
+    it wrote inside a study. Skipped inside Slurm jobs (sacct accounts for
+    those) and for sub-second runs; never allowed to fail the stage."""
+    try:
+        if os.environ.get("SLURM_JOB_ID") or not getattr(args, "output_dir", None):
+            return
+        from .stages import study as study_stage
+
+        root = study_stage.find_study(args.output_dir)
+        if root is None:
+            return
+        t1, cpu1 = _cpu_snapshot()
+        if cpu1 - cpu0 < 1.0:
+            return
+        import datetime
+
+        rec = {"stage": stage_name, "output_dir": str(Path(args.output_dir).resolve()), "wall_s": round(t1 - t0, 2),
+               "cpu_s": round(cpu1 - cpu0, 2), "host": os.uname().nodename,
+               "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+        ledger = root / "usage" / "local.jsonl"
+        ledger.parent.mkdir(exist_ok=True)
+        with open(ledger, "a") as f:
+            f.write(json.dumps(rec) + "\n")
+    except Exception:  # noqa: BLE001 - accounting must never break a stage
+        pass
+
+
 def _stage_log_path(args, stage_name: str) -> Path:
     if args._uses_output_dir and args.output_dir:
         out = Path(args.output_dir)
@@ -161,7 +202,11 @@ def main(argv=None) -> int:
     _NON_INPUT_KEYS = ("json_in", "json_out", "describe", "stage", "force", "dry_run", "output_dir")
     input_echo = {k: v for k, v in vars(args).items() if not k.startswith("_") and k not in _NON_INPUT_KEYS}
 
-    if args._uses_output_dir and args.output_dir:
+    # A dry run records nothing: otherwise the real run that follows, with
+    # identical inputs, would short-circuit to the dry run's result.
+    use_manifest = bool(args._uses_output_dir and args.output_dir and not getattr(args, "dry_run", False))
+
+    if use_manifest:
         try:
             decision, prior = _manifest.begin(args.output_dir, mod.NAME, input_echo, force=args.force)
         except _manifest.InputMismatch as exc:
@@ -173,10 +218,12 @@ def main(argv=None) -> int:
 
     log_path = _stage_log_path(args, mod.NAME)
     try:
+        t0, cpu0 = _cpu_snapshot()
         with _stage_output_to_log(log_path):
             result = mod.run(args)
+        _record_local_usage(args, mod.NAME, t0, cpu0)
     except Exception as exc:  # noqa: BLE001 - surface as structured error, not a traceback the caller has to parse
-        if args._uses_output_dir and args.output_dir:
+        if use_manifest:
             _manifest.finish(args.output_dir, mod.NAME, input_echo, {"error": str(exc)}, status="failed")
         error = {"error": str(exc), "log": str(log_path)}
         tail = _log_tail(log_path)
@@ -185,7 +232,7 @@ def main(argv=None) -> int:
         _emit(error, args)
         return 1
 
-    if args._uses_output_dir and args.output_dir:
+    if use_manifest:
         _manifest.finish(args.output_dir, mod.NAME, input_echo, result, status="done")
 
     emitted = dict(result)

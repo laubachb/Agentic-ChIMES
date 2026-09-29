@@ -1,91 +1,75 @@
 # Agentic ChIMES
 
-A tool-calling CLI and Python API for building
-[ChIMES](https://chimes-lsq.readthedocs.io/) machine-learned interatomic
-potentials end to end: dataset selection, DFT/QM relabeling, `fm_setup.in`
-authoring, design-matrix generation, DLARS/LASSO solving, LAMMPS/holdout
-evaluation, and Slurm submission on LLNL and TACC HPC systems.
+Build [ChIMES](https://chimes-lsq.readthedocs.io/) machine-learned interatomic
+potentials by describing what you need. Open the repository in
+[Claude Code](https://claude.com/claude-code), say *"I need a ChIMES
+potential for liquid Cu-Zr"*, and a team of specialist agents does the
+following:
 
-**What this is:** every stage of the ChIMES model-building workflow exposed
-as a discrete command with a structured JSON contract — `chimes-agent
-<stage> --json-in in.json --json-out out.json`. A human or a coding agent
-(e.g. a Claude Code session) calls one stage at a time, inspects the
-result, and decides what to do next.
+- finds and curates training data from open DFT databases, or generates
+  structures and labels them with Quantum ESPRESSO;
+- chooses cutoffs, Morse λ and polynomial orders;
+- fits, reviews and validates the model in LAMMPS;
+- measures what it costs to run and what it cost to build;
+- writes the study up.
 
-**What this is not:** an autonomous closed-loop orchestrator that runs a
-multi-cycle active-learning campaign by itself. Hyperparameter choices
-(regularization strength, basis order, dataset curation) stay a human/agent
-judgment call made *between* stage invocations — this repo makes each of
-those steps fast, reliable, and inspectable, not automatic.
+You approve every cluster job, and every step is a plain command
+(`chimes-agent <stage>`) you can also run by hand.
 
-[Source on GitHub :fontawesome-brands-github:](https://github.com/laubachb/Agentic-ChIMES){ .md-button }
-[Get started →](getting_started.md){ .md-button .md-button--primary }
+<div class="grid cards" markdown>
 
----
+- **[Getting started](getting_started.md)**: install, build the ChIMES
+  toolchain, run your first study.
+- **[Running a study](guide/running_a_study.md)**: what to ask for, what
+  you will be asked, how to steer and resume.
+- **[The agents](guide/agents.md)**: who does what, and what they never do.
+- **[Worked example: Cu-Zr](guide/example_cuzr.md)**: a real study,
+  numbers included.
 
-## Install
+</div>
 
-```bash
-git clone git@github.com:laubachb/Agentic-ChIMES.git
-cd Agentic-ChIMES
-pip install -e .
-chimes-agent setup --machine dane --component all
+## What a study produces
+
+| | |
+|---|---|
+| **Model** | `params.txt` + `fm_setup.in` for LAMMPS `pair_style chimesFF` |
+| **Model card** | accuracy ± uncertainty, the distances and compositions it is valid for, data provenance and licenses |
+| **Cost model** | strong/weak scaling; CPU-hours for "N atoms for T ns" |
+| **Compute ledger** | CPU-hours charged vs used, by phase |
+| **Report** | `REPORT.md`: data → hyperparameters → model → MD → performance, with findings and caveats |
+
+## The workflow
+
+```
+plan ─► data ─► hyperparameters ─► model check ─► active learning ─► MD ─► benchmark ─► deploy + report
 ```
 
-`setup` clones the three vendored ChIMES forks into `codes/` (gitignored —
-never pushed to this repo, see [The vendored forks](concepts/vendored_forks.md))
-and builds them, plus a from-scratch Quantum ESPRESSO clone+build, for
-your machine. See [Getting started](getting_started.md) for the full walkthrough.
+Each phase ends with one file the next reads ([study layout](guide/study_layout.md)),
+so a study can stop and resume anywhere. Guardrails:
 
-## Quickstart
+- dry run and your approval before any cluster submission;
+- one level of theory per fit;
+- statistically tied models resolved in favor of the cheaper one;
+- nothing written into the upstream ChIMES code.
 
-```bash
-export FM=codes/chimes_lsq-LLfork/test_suite-lsq/test_4atoms.2
-
-chimes-agent fm-setup-gen \
-  --trjfile "$(pwd)/$FM/dump2.xyzf" --nframes 250 \
-  --elements C,H --order '{"2":6,"3":2}' \
-  --pair-cutoffs '{"C-C":[1.29,5.0],"C-H":[1.29,5.0],"H-H":[0.9,5.0]}' \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent amat-build --fm-setup-in /tmp/chimes-quickstart/fm_setup.in \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent solve --algorithm svd \
-  --A /tmp/chimes-quickstart/A.txt --b /tmp/chimes-quickstart/b.txt \
-  --header /tmp/chimes-quickstart/params.header --map /tmp/chimes-quickstart/ff_groups.map \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent evaluate --params /tmp/chimes-quickstart/params.txt \
-  --holdout-xyzf "$FM/dump2.xyzf" --max-frames 25 --json-out /tmp/chimes-quickstart/eval.json
-```
-
-Every stage supports `--describe` to print its full input/output schema
-without running it:
+## Using the stages directly
 
 ```bash
-chimes-agent solve --describe
+chimes-agent data-search --elements Cu,Zr          # open datasets for a chemical system
+chimes-agent hyper-search --describe               # any stage's full input/output contract
 ```
 
-## Where to go next
+Stdout is always one JSON object. See the [command reference](commands/index.md)
+and the [stage-by-stage tutorial](tutorials/end_to_end_holdout_study.md).
 
-- **[Getting started](getting_started.md)** — install, build the toolchain, troubleshooting
-- **[Stages and contracts](concepts/stages_and_contracts.md)** — the stage abstraction, manifest/idempotency, why it's built this way, and the phasing plan
-- **[The vendored forks](concepts/vendored_forks.md)** — why `codes/` is gitignored and cloned fresh, pinned commits
-- **[Machine profiles](concepts/machine_profiles.md)** — HPC machine profiles (Dane, Stampede3), adding your own cluster
-- **[QM-driver plugins](concepts/qm_driver_plugins.md)** — the QM-driver registry design, how Quantum ESPRESSO slots in
-- **[Units and conventions](concepts/units_and_conventions.md)** — unit conventions and the guardrails baked in as defaults
-- **[Cutoffs and lambdas](concepts/cutoffs_and_lambdas.md)** — documented ChIMES cutoff/λ/order guidance vs. defaults, and how `auto-build` derives them from data
-- **[Commands](commands/index.md)** — full reference, one page per subcommand
-- **[Tutorial: end-to-end holdout study](tutorials/end_to_end_holdout_study.md)** — a full real-study walkthrough
-
-## Repo layout
+## Repository layout
 
 ```
 Agentic-ChIMES/
-├── codes/                    # gitignored -- cloned fresh by `chimes-agent setup`
-├── deps/                     # gitignored -- built/fetched by `chimes-agent setup`
-├── src/agentic_chimes/        # the CLI + orchestration layer
-├── tests/unit/                # no HPC/allocation needed
-└── docs/                      # this site
+├── CLAUDE.md, .claude/       agent rules, subagents, playbooks (skills), permissions
+├── src/agentic_chimes/       the chimes-agent CLI: stages, HPC layer, data sources, I/O
+├── codes/                    gitignored: upstream ChIMES forks, cloned by `chimes-agent setup`
+├── deps/                     gitignored: builds (LAMMPS, QE) and caches
+├── tests/unit/               no HPC needed
+└── docs/                     this site
 ```

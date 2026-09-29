@@ -69,11 +69,16 @@ also suit `auto-build` and `lammps-run`.
   databases.
 - `data-fetch --count-only` on MatPES-PBE-2025.2: 169 Cu/Zr-only frames
   (5 s, two columns read).
-- `data-curate` removes 8 isolated atoms, 8 vacuum clusters and 1 duplicate,
-  leaving 152 frames, 150 of them triclinic, with 2 Å thinnest width
-  (`N_LAYERS 4` for an 8 Å cutoff).
+- `data-curate` removes 9 vacuum clusters/isolated atoms, 1 duplicate and 1
+  energy outlier, leaving 158 frames, 156 of them triclinic (several are
+  1-atom crystals), with 2 Å thinnest width (`N_LAYERS 4` for an 8 Å
+  cutoff).
+- The hyperparameter phase then fits a 2-body order 14 @ 7 Å + 3-body order
+  4 @ 6.3 Å model at holdout relative force error 0.32 ± 0.07 (see
+  `docs/commands/hyper-search.md`), a level that points at the data as the
+  limit.
 - A reasonable plan is therefore C (or B+C): generated Cu-Zr supercells plus
-  MatPES structures, relabeled with one QE settings set, rather than 152
+  MatPES structures, relabeled with one QE settings set, rather than 158
   small MatPES frames on their own.
 
 ## Limits

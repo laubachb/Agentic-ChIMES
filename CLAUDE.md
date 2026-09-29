@@ -9,10 +9,11 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 
 - One subcommand per stage. **`chimes-agent <stage> --describe` is the source
   of truth for a stage's inputs/outputs** — read it instead of guessing flags.
-  Stages: `setup`, `data-search`, `data-fetch`, `data-generate`,
-  `data-curate`, `dataset-select`, `qe-relabel`, `fm-setup-gen`,
+  Stages: `setup`, `study`, `usage`, `data-search`, `data-fetch`, `data-generate`,
+  `data-curate`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
+  `hyper-search`, `fm-setup-gen`,
   `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `submit`, `al-select`, `al-run`.
+  `lammps-run`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -38,6 +39,9 @@ Load the matching skill before starting that kind of task:
 - `chimes-study` — an end-to-end goal ("I need a potential for X"): the
   orchestration plan, study layout, phase handoffs and approval gates
 - `chimes-data-curation` — find, fetch, generate and curate training data
+- `chimes-hyperparameter-search` — cutoffs, Morse lambdas, 2/3/4-body orders
+- `chimes-benchmarking` — CPU-hours used; strong/weak scaling; sizing compute requests
+- `chimes-study-report` — the final human-readable study report
 - `chimes-auto-build` — unlabeled or labeled configs → one optimal model
 - `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
 - `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
@@ -45,6 +49,10 @@ Load the matching skill before starting that kind of task:
 
 Subagents: `chimes-data-curator` (the data phase: plan → search → fetch/
 generate → curate → `data_manifest.json`; returns decisions it cannot make),
+`chimes-hyperparameter-tuner` (the fitting phase: analysis → search plan →
+judged result → `hyper_choice.json`; returns Slurm jobs for approval),
+`chimes-benchmark` (CPU-hour accounting + scaling benchmark → sizing
+recipe), `chimes-report-writer` (collates the study into `REPORT.md`),
 `chimes-job-monitor` (cheap Slurm/log status checks — delegate
 waiting-and-checking to it) and `chimes-fit-reviewer` (independent read of a
 finished sweep/evaluate result before you recommend a model).

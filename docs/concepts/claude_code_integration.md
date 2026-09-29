@@ -38,6 +38,9 @@ flags rather than duplicating them, so they don't go stale:
 |---|---|
 | `chimes-study` | an end-to-end goal ("I need a potential for X"): orchestrates the five study phases, layout, handoffs, approvals |
 | `chimes-data-curation` | finding, fetching, generating and curating training data (the data agent's playbook) |
+| `chimes-hyperparameter-search` | choosing cutoffs, Morse lambdas and 2/3/4-body orders (the tuner agent's playbook) |
+| `chimes-benchmarking` | CPU-hours used, strong/weak scaling, sizing compute requests (the benchmark agent's playbook) |
+| `chimes-study-report` | the final human-readable study report (the report writer's playbook) |
 | `chimes-auto-build` | "build me a model from these configs", one-shot pipeline, QE labeling then fit |
 | `chimes-build-model` | hands-on fitting, choosing cutoffs/orders, sweeps, diagnosing a bad fit |
 | `chimes-hpc-jobs` | anything touching Slurm, QE, DLARS, lustre quota, or a job that seems stuck |
@@ -45,6 +48,15 @@ flags rather than duplicating them, so they don't go stale:
 
 **Subagents:**
 
+- `chimes-benchmark`: accounts for the CPU-hours a study used and measures
+  the final model's strong/weak scaling, turning it into CPU-hour estimates for
+  production runs (submits nothing itself).
+- `chimes-report-writer`: collates the whole study into `REPORT.md`, every number
+  traced to an artifact.
+- `chimes-hyperparameter-tuner` — the hyperparameter agent. Analyzes the
+  curated data, plans the cutoff/λ/order search, returns the Slurm job for
+  approval, then interprets the result into `hyper_choice.json` and a
+  written report.
 - `chimes-data-curator` — the data agent. Plans the dataset from the
   request, searches open databases, fetches or generates structures,
   curates them, and returns `data_manifest.json` plus any decision it

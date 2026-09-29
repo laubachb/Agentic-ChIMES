@@ -64,7 +64,9 @@ def _extrema(r, g, rmin):
     only features with prominence >= 5% of the curve maximum."""
     from scipy.signal import find_peaks
 
-    mask = r > rmin
+    # start just below rmin: in a perfect crystal the first peak sits exactly
+    # at the minimum distance (smoothing spreads it by ~3 sigma)
+    mask = r > rmin - 3 * SMOOTH_SIGMA
     rr, gg = r[mask], g[mask]
     if gg.size < 5 or gg.max() <= 0:
         return [], []
@@ -77,8 +79,6 @@ def _extrema(r, g, rmin):
 def analyze(frames, elements, r_max: float = 8.0, s_minim_delta: float = 0.02) -> dict:
     """Per-pair distance statistics, RDF features and cutoff/lambda
     suggestions for a list of xyzf Frames."""
-    from ase.neighborlist import neighbor_list
-
     from ..data_sources import convert
 
     edges = np.arange(0.0, r_max + BIN, BIN)
@@ -93,9 +93,7 @@ def analyze(frames, elements, r_max: float = 8.0, s_minim_delta: float = 0.02) -
         widths.append(min(_widths(atoms.cell[:])))
         n_atoms_total += fr.natoms
         n_energy += fr.energy is not None
-        i, j, d = neighbor_list("ijd", atoms, r_max)
-        keep = i < j
-        i, j, d = i[keep], j[keep], d[keep]
+        i, j, d = convert.unique_pairs(atoms, r_max)
         sym = np.asarray(fr.symbols)
         for p in hist:
             a, b = p.split("-")
@@ -141,8 +139,15 @@ def analyze(frames, elements, r_max: float = 8.0, s_minim_delta: float = 0.02) -
     shell2 = max(second_shells) if second_shells else None
 
     cand_2b = sorted({round(x, 2) for x in [5.0, 6.0, 7.0, 8.0] + ([shell2] if shell2 else []) if x <= r_max})
-    cand_3b = sorted({round(x, 2) for x in ([shell1, (shell1 + (shell2 or shell1 + 1.5)) / 2] if shell1 else [4.0, 5.0])})
-    cand_4b = sorted({round(x, 2) for x in ([shell1 - 0.3, shell1] if shell1 else [3.5, 4.0])})
+    # (2-body candidates below the largest many-body candidate are still valid;
+    # hyper-search only pairs a many-body cutoff with a 2-body cutoff >= it)
+    # Many-body cutoffs span first shell -> second shell. ChIMES' cubic smoothing
+    # multiplies one (1 - r/r_c)^3 per cluster distance, so a cutoff at the first
+    # shell leaves 3-/4-body terms almost no signal (measured on Cu-Zr:
+    # docs/concepts/cutoffs_and_lambdas.md); the search weighs signal against cost.
+    far = shell2 if shell2 and shell1 and shell2 > shell1 + 0.5 else (shell1 + 2.0 if shell1 else None)
+    cand_3b = sorted({round(min(x, r_max), 2) for x in ([shell1, (shell1 + far) / 2, far] if shell1 else [4.0, 5.0, 6.0])})
+    cand_4b = sorted({round(min(x, r_max), 2) for x in ([shell1, (shell1 + far) / 2] if shell1 else [4.0, 5.0])})
     all_cands = sorted(set(cand_2b + cand_3b + cand_4b))
 
     notes = []
@@ -191,7 +196,7 @@ def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinne
         default_s_minim=1.0, default_s_maxim=cfg["s_maxim_2b"], default_morse_lambda=1.5, s_delta=0.01,
         wraptrj=True, nlayers=max(1, nlayers_required(cutoff, thinnest)), fitcoul=False, fitstrs="false",
         fitener="true" if cfg.get("fitener") else "false", fitpovr=False, chbtype="MORSE", fcuttyp="CUBIC",
-        exclude_3b=None, exclude_4b=None,
+        exclude_3b=cfg.get("exclude_3b") or None, exclude_4b=cfg.get("exclude_4b") or None,
         special_maxim_3b=cfg.get("s_maxim_3b") if cfg.get("order_3b") else None,
         special_maxim_4b=cfg.get("s_maxim_4b") if cfg.get("order_4b") else None,
         special_blocks=None, output_dir=out_dir,
@@ -254,6 +259,64 @@ def bootstrap_se(frame_rows, n_boot: int = 300, seed: int = 0) -> float:
     return float(rel.std())
 
 
+def _pair_label_elements(label: str) -> list:
+    import re
+
+    return re.findall(r"[A-Z][a-z]?", label)
+
+
+def cluster_coverage(work_dir: Path) -> dict:
+    """Per cluster type, from chimes_lsq's own log: contributing cluster
+    instances and minimum pair distances. Keys are element lists as
+    fm_setup.in's EXCLUDE blocks spell them ("Cu Cu Zr"). Instance counts
+    include periodic images, so tiny replicated cells inflate them; zero
+    means the type is absent from the data."""
+    import re
+    from collections import Counter
+
+    lines = (work_dir / "fm_setup.log").read_text(errors="replace").splitlines()
+    out = {"2b": {}, "3b": {}, "4b": {}}
+    body_of = {"pair": ("2b", 2, 1), "triplet": ("3b", 3, 2), "quadruplet": ("4b", 4, 3)}
+    for i, ln in enumerate(lines):
+        m = re.search(r"Total number of configurations contributing to each (pair|triplet|quadruplet) type", ln)
+        d = re.search(r"Minimum distances between atoms (triplet|quadruplet) pairs", ln)
+        if m or d:
+            body, n_atoms, per_atom = body_of[(m or d).group(1)]
+            for row in lines[i + 1:]:
+                toks = row.split()
+                if not toks or not toks[0].isdigit():
+                    break
+                if body == "2b":
+                    labels, rest = [toks[1] + toks[2]], toks[3:]
+                else:
+                    n_pairs = n_atoms * (n_atoms - 1) // 2
+                    labels, rest = toks[1:1 + n_pairs], toks[1 + n_pairs:]
+                counts = Counter(e for lab in labels for e in _pair_label_elements(lab))
+                elems = sorted(counts.elements()) if body == "2b" else sorted(
+                    e for e, c in counts.items() for _ in range(c // per_atom))
+                entry = out[body].setdefault(" ".join(elems), {})
+                if m:
+                    if rest and rest[0] == "excluded":  # chimes_lsq prints this for EXCLUDEd types
+                        entry["instances"], entry["excluded"] = 0, True
+                    else:
+                        entry["instances"] = int(float(rest[0]))
+                else:
+                    entry["min_distances"] = [round(float(x), 3) for x in rest]
+    return out
+
+
+def paired_se(rows_a, rows_b, n_boot: int = 500, seed: int = 0) -> float:
+    """Standard error of (relative force error of a) - (of b) when both were
+    scored on the same holdout frames: resample frames jointly. Frame-to-frame
+    difficulty cancels, so this is far smaller than either model's own SE."""
+    a, b = np.asarray(rows_a, dtype=float), np.asarray(rows_b, dtype=float)
+    if len(a) != len(b) or len(a) < 3:
+        return float("inf")
+    idx = np.random.default_rng(seed).integers(0, len(a), size=(n_boot, len(a)))
+    sa, sb = a[idx].sum(axis=1), b[idx].sum(axis=1)
+    return float((np.sqrt(sa[:, 0] / sa[:, 1]) - np.sqrt(sb[:, 0] / sb[:, 1])).std())
+
+
 def run_point(task: dict) -> dict:
     """Fit + evaluate one configuration. Cached by config hash in its point
     directory, so re-running a search resumes instead of refitting."""
@@ -263,25 +326,30 @@ def run_point(task: dict) -> dict:
     cfg, point_dir = task["cfg"], Path(task["point_dir"])
     cached = point_dir / "result.json"
     if cached.is_file():
-        return json.loads(cached.read_text())
+        prior = json.loads(cached.read_text())
+        if prior.get("status") in ("done", "timeout"):  # failures are retried: they may have been our bug
+            return prior
     point_dir.mkdir(parents=True, exist_ok=True)
     result = {"key": config_key(cfg), "cfg": cfg, "point_dir": str(point_dir)}
     try:
         fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
                                             task["thinnest"], str(point_dir)))
-        mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None, algorithm=task["algorithm"],
-                                alpha=task["alpha"], eps=1e-5, weights=None, folds=4, normalize=False, machine=None,
+        mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None,
+                                algorithm=cfg.get("solver", task["algorithm"]), alpha=cfg.get("alpha", task["alpha"]), eps=1e-5, weights=None, folds=4, normalize=False, machine=None,
                                 queue="batch", walltime_hours=1.0, nodes=1, ntasks_per_node=None, poll_interval_s=60,
-                                output_dir=str(point_dir)))
+                                timeout_s=task.get("timeout_s"), output_dir=str(point_dir)))
         work = Path(mb["work_dir"])
         n_params, n_rows = (int(x) for x in (work / "dim.txt").read_text().split()[:2])
         tr_rmse, tr_rel = _train_force_error(work)
         signal = body_order_signal(work)
+        coverage = cluster_coverage(work)
         ev = evaluate.run(ns(params=[mb["params"]], holdout_xyzf=task["holdout_xyzf"], max_frames=None, per_frame=True))
         h = ev["results"][0]
         result.update({
             "status": "done",
             "params": mb["params"],
+            "solver": cfg.get("solver", task["algorithm"]),
+            "solver_alpha": mb["solve"].get("cv_alpha", cfg.get("alpha", task["alpha"])),
             "fm_setup_in": fm["fm_setup_in"],
             "nlayers": fm["params"]["nlayers"],
             "n_params": n_params,
@@ -292,10 +360,14 @@ def run_point(task: dict) -> dict:
             "holdout_relative_force_error": h["relative_force_error"],
             "holdout_rmse_energy_per_atom": h["rmse_energy_kcal_mol_per_atom"],
             "holdout_relative_force_se": bootstrap_se(h["per_frame_force"]),
+            "holdout_per_frame_force": h["per_frame_force"],
             "signal": signal,
+            "cluster_coverage": coverage,
         })
         for bulky in ("A.txt",):
             (work / bulky).unlink(missing_ok=True)  # the design matrix is the big file; params/force/b stay
+    except TimeoutError as exc:
+        result.update({"status": "timeout", "error": str(exc)[-600:]})
     except Exception as exc:  # noqa: BLE001 - one bad point must not end the search
         result.update({"status": "failed", "error": str(exc)[-600:]})
     cached.write_text(json.dumps(result, indent=1))
@@ -311,24 +383,47 @@ def score(r: dict, objective: str, energy_weight: float) -> float:
     return s
 
 
-def cost_key(r: dict):
-    """MD cost ordering: shorter cutoffs first (pair counts grow ~r^3, triplets
-    ~r^6, quartets ~r^9), highest body order first; then fewer coefficients."""
+DEFAULT_DENSITY = 0.06  # atoms/A^3, dense metal; hyper-search passes the training set's own
+
+
+def md_cost(r: dict, density: float = DEFAULT_DENSITY) -> float:
+    """Relative ChIMES MD cost per atom: for each body order n, the clusters
+    per atom within its cutoff, (density * 4/3 pi r^3)^(n-1), times that body
+    order's coefficient count (each cluster evaluates its type's
+    polynomial). A shorter cutoff with many more coefficients can cost more
+    than a longer one with few: 3-body order 4 at 7.0 A is ~half the cost of
+    order 6 at 6.33 A."""
+    import math
+
     c = r["cfg"]
-    return (
-        c.get("s_maxim_4b") or 0.0 if c.get("order_4b") else 0.0,
-        c.get("s_maxim_3b") or 0.0 if c.get("order_3b") else 0.0,
-        c["s_maxim_2b"],
-        r["n_params"],
-    )
+    sig = r.get("signal") or {}
+    n2 = sig.get("n_2b") or r["n_params"]
+    n3 = sig.get("n_3b") or 0
+    n4 = sig.get("n_4b") or 0
+
+    def neigh(rc):
+        return density * 4.0 / 3.0 * math.pi * rc**3
+
+    cost = neigh(c["s_maxim_2b"]) * n2
+    if c.get("order_3b") and n3:
+        cost += neigh(c.get("s_maxim_3b") or c["s_maxim_2b"]) ** 2 * n3
+    if c.get("order_4b") and n4:
+        cost += neigh(c.get("s_maxim_4b") or c.get("s_maxim_3b") or c["s_maxim_2b"]) ** 3 * n4
+    return cost
 
 
-def select(results: list, *, objective: str, energy_weight: float, tolerance: float, max_param_ratio: float) -> dict:
-    """Best score, then the cheapest point (cost_key) whose score is within
-    max(tolerance x best, one bootstrap standard error of the best) of it --
-    the one-standard-error rule, so holdout noise alone never buys a more
-    expensive model. Points with more coefficients per equation than
-    max_param_ratio are reported but never chosen."""
+def cost_key(r: dict, density: float = DEFAULT_DENSITY):
+    return (md_cost(r, density), r["n_params"])
+
+
+def select(results: list, *, objective: str, energy_weight: float, tolerance: float, max_param_ratio: float,
+           density: float = DEFAULT_DENSITY) -> dict:
+    """Best score, then the cheapest point (cost_key) statistically tied with
+    it: score - best <= max(tolerance x best, SE of the paired difference).
+    The paired SE resamples holdout frames jointly for both models, so shared
+    frame difficulty cancels; without per-frame data it falls back to the
+    best point's own SE. Points over max_param_ratio coefficients per
+    equation are reported but never chosen."""
     done = [r for r in results if r.get("status") == "done" and r.get("holdout_relative_force_error") is not None]
     for r in done:
         r["score"] = score(r, objective, energy_weight)
@@ -337,12 +432,23 @@ def select(results: list, *, objective: str, energy_weight: float, tolerance: fl
     if not ok:
         return {"chosen": None, "best": None, "reason": "no completed point within the parameter budget"}
     best = min(ok, key=lambda r: r["score"])
-    margin = max(tolerance * best["score"], best.get("holdout_relative_force_se") or 0.0)
-    within = [r for r in ok if r["score"] <= best["score"] + margin]
-    chosen = min(within, key=cost_key)
-    basis = "one standard error" if margin > tolerance * best["score"] else f"{tolerance:.0%}"
+
+    def margin(r):
+        if r is best:
+            return 0.0
+        if r.get("holdout_per_frame_force") and best.get("holdout_per_frame_force"):
+            se = paired_se(r["holdout_per_frame_force"], best["holdout_per_frame_force"])
+        else:
+            se = best.get("holdout_relative_force_se") or 0.0
+        return max(tolerance * best["score"], se)
+
+    for r in ok:
+        r["tie_margin"] = round(margin(r), 5)
+    within = [r for r in ok if r["score"] - best["score"] <= r["tie_margin"]]
+    for r in ok:
+        r["md_cost"] = round(md_cost(r, density), 1)
+    chosen = min(within, key=lambda r: cost_key(r, density))
     reason = ("lowest score and cheapest" if chosen is best else
-              f"cheapest within {basis} of the best score (margin {margin:.4f}; chose {chosen['score']:.4f} vs best "
-              f"{best['score']:.4f}; {chosen['n_params']} vs {best['n_params']} coefficients)")
-    return {"chosen": chosen, "best": best, "margin": margin, "reason": reason,
-            "n_excluded_over_budget": len(done) - len(ok)}
+              f"cheapest point statistically tied with the best (difference {chosen['score'] - best['score']:.4f} <= "
+              f"margin {chosen['tie_margin']:.4f}; estimated MD cost {chosen['md_cost']:.3g} vs {best['md_cost']:.3g})")
+    return {"chosen": chosen, "best": best, "reason": reason, "n_excluded_over_budget": len(done) - len(ok)}

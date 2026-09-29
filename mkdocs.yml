@@ -49,6 +49,7 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.inlinehilite
   - pymdownx.snippets
+  - md_in_html
 
 plugins:
   - search
@@ -56,36 +57,55 @@ plugins:
 nav:
   - Home: index.md
   - Getting started: getting_started.md
-  - Concepts:
-      - concepts/stages_and_contracts.md
-      - concepts/vendored_forks.md
-      - concepts/machine_profiles.md
-      - concepts/qm_driver_plugins.md
-      - concepts/units_and_conventions.md
-      - concepts/cutoffs_and_lambdas.md
-      - concepts/claude_code_integration.md
-      - concepts/data_curation.md
+  - User guide:
+      - Running a study: guide/running_a_study.md
+      - Study layout and artifacts: guide/study_layout.md
+      - The agents: guide/agents.md
+      - Compute, approvals and costs: guide/compute.md
+      - "Worked example: Cu-Zr": guide/example_cuzr.md
   - Commands:
       - commands/index.md
-      - setup: commands/setup.md
-      - fm-setup-gen: commands/fm-setup-gen.md
-      - amat-build: commands/amat-build.md
-      - solve: commands/solve.md
-      - model-build: commands/model-build.md
-      - auto-build: commands/auto-build.md
-      - data-search: commands/data-search.md
-      - data-fetch: commands/data-fetch.md
-      - data-generate: commands/data-generate.md
-      - data-curate: commands/data-curate.md
-      - dataset-select: commands/dataset-select.md
-      - sweep: commands/sweep.md
-      - evaluate: commands/evaluate.md
-      - lammps-run: commands/lammps-run.md
-      - qe-relabel: commands/qe-relabel.md
-      - submit: commands/submit.md
-      - al-run: commands/al-run.md
-      - al-select: commands/al-select.md
-  - Tutorial: tutorials/end_to_end_holdout_study.md
+      - Study:
+          - study: commands/study.md
+          - usage: commands/usage.md
+          - study-report: commands/study-report.md
+      - Data:
+          - data-search: commands/data-search.md
+          - data-fetch: commands/data-fetch.md
+          - data-generate: commands/data-generate.md
+          - data-curate: commands/data-curate.md
+          - dataset-select: commands/dataset-select.md
+          - qe-relabel: commands/qe-relabel.md
+      - Hyperparameters and fitting:
+          - hyper-analyze: commands/hyper-analyze.md
+          - hyper-search: commands/hyper-search.md
+          - fm-setup-gen: commands/fm-setup-gen.md
+          - amat-build: commands/amat-build.md
+          - solve: commands/solve.md
+          - model-build: commands/model-build.md
+          - sweep: commands/sweep.md
+          - auto-build: commands/auto-build.md
+          - evaluate: commands/evaluate.md
+      - Active learning:
+          - al-select: commands/al-select.md
+          - al-run: commands/al-run.md
+      - MD, performance, deployment:
+          - lammps-run: commands/lammps-run.md
+          - benchmark: commands/benchmark.md
+          - deploy: commands/deploy.md
+      - Infrastructure:
+          - setup: commands/setup.md
+          - submit: commands/submit.md
+  - Concepts:
+      - concepts/stages_and_contracts.md
+      - concepts/claude_code_integration.md
+      - concepts/data_curation.md
+      - concepts/cutoffs_and_lambdas.md
+      - concepts/units_and_conventions.md
+      - concepts/machine_profiles.md
+      - concepts/vendored_forks.md
+      - concepts/qm_driver_plugins.md
+  - Stage-by-stage tutorial: tutorials/end_to_end_holdout_study.md
 
 extra:
   social:

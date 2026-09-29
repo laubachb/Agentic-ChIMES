@@ -1,10 +1,19 @@
 # Cutoffs and lambdas: documented guidance vs. defaults
 
-`stages/_cutoffs.py` and `io/rdf.py` implement ChIMES' own documented
-practice for choosing per-pair cutoffs and the Morse λ parameter,
-data-driven from the training set — used by
-[`auto-build`](../commands/auto-build.md). This page traces every number
-back to where it's documented (or says plainly when it isn't).
+Two implementations of ChIMES' documented practice for per-pair cutoffs and
+the Morse λ parameter exist:
+
+- `stages/_cutoffs.py` + `io/rdf.py`, used by
+  [`auto-build`](../commands/auto-build.md): minimum-image distances,
+  **orthorhombic cells only**.
+- `stages/_hyper.py`, used by [`hyper-analyze`](../commands/hyper-analyze.md)
+  and [`hyper-search`](../commands/hyper-search.md): ASE neighbour lists
+  over all periodic images, so any cell shape, including cells thinner than
+  the cutoff (most open-database frames).
+
+This page traces every number back to where it's documented (or says
+plainly when it isn't), and records what measurements on real data showed
+beyond the documentation.
 
 ## S_MINIM (inner cutoff): documented, with an exact number
 
@@ -76,6 +85,40 @@ output reports `<label>_capped`/`<label>_cap_reason` whenever the data-
 driven value got overridden, so a small DFT-sized training cell forcing a
 short cutoff is visible, not silent.
 
+## Many-body cutoffs: longer than the documented shells suggest
+
+Measured on 122 curated MatPES Cu-Zr frames (first shells end at
+3.3-4.1 Å; see [`hyper-search`](../commands/hyper-search.md)):
+
+| 3-body / 4-body cutoff (Å) | 3-body column scale ÷ 2-body | 4-body ÷ 2-body | lstsq train force RMS, 2+3-body → +4-body |
+|---|---|---|---|
+| 4.09 / 4.09 (first shell) | 6×10⁻⁵ | 2×10⁻¹⁰ | 1.66 → 1.59 |
+| 5.21 / 5.21 | 3×10⁻³ | 3×10⁻⁷ | 1.06 → 0.46 |
+| 6.33 / 6.33 | 1.5×10⁻² | 1×10⁻⁵ | 0.76 → 0.29 |
+
+The reason is ChIMES' smooth cutoff. Every distance in a cluster gets a
+`CUBIC` factor of roughly (1 − r/r_c)³: three factors for a triplet, six
+for a quartet. With r_c at the first-shell minimum and neighbours at
+2.5-3.2 Å, each factor is ~0.05, so the product almost vanishes. The
+documented "3-body ≈ first shell" guidance therefore gives 3-body terms
+little leverage for a dense metal. Cutoffs toward the second shell matter,
+and they cost more (cluster counts grow as r⁶ for triplets and r⁹ for
+quartets). That trade-off is why `hyper-search` searches the many-body
+cutoffs instead of fixing them.
+
+Small column scale also interacts with the solver. `chimes_lsq.py`'s local
+`lassolars` does **not** normalize columns (`StandardScaler(with_std=False)`),
+so an L1 penalty sized for 2-body columns zeroes 4-body columns that are
+10⁻⁷ as large. On the same data, 4-body terms at a 3.8-4.1 Å cutoff changed
+holdout errors by less than 10⁻⁸ at α = 10⁻⁵, while unregularized least
+squares used them. Normalizing the columns is not automatically better,
+though. On the same data, column-normalized solvers overfit the freed
+many-body terms (holdout relative force error 1.1-1.5 versus 0.43 for raw
+`lassolars`; details in `docs/commands/solve.md`). With little data, raw
+`lassolars` suppressing small-scale columns is useful regularization, and it
+is `hyper-search`'s default. The practical consequence: with scarce data,
+4-body terms rarely enter a ChIMES fit, whatever order they are given.
+
 ## MORSE_LAMBDA: documented, RDF-derived here too
 
 > "Generally set to location of first radial distribution peak for each
@@ -95,8 +138,12 @@ energy/force constant exists anywhere in the docs — only this RDF-peak
 > al_driver's `REGRESS_VAR` defaults to `1.0E-5` when unset —
 > `al_driver-LLfork/src/verify_config.py:1191`
 
-`auto-build` defaults `alpha=1e-5` (the normalized-fit value) and does
-**not** sweep it — the sweep dimension you asked for is polynomial order
+`auto-build` defaults `alpha=1e-5` and does **not** sweep it. Note that
+this is the documented value for *normalized* fits, while the local solvers
+in `chimes_lsq.py` (`lassolars`, `lasso`) do not normalize columns; the
+documented un-normalized starting point is 1e-2. Measured on Cu-Zr, 1e-5
+and 1e-3 gave holdout errors within noise of each other, so 1e-5 stays the
+default (see the many-body section above) — the sweep dimension you asked for is polynomial order
 only; regularization stays a fixed, documented value unless you override
 `--alpha` explicitly. (`sweep` itself, used standalone, can still sweep
 `alpha` — see `docs/commands/sweep.md`.)
@@ -116,7 +163,9 @@ only; regularization stays a fixed, documented value unless you override
 `auto-build`'s default `order_grid` (`{"2":[10,12,14], "3":[5,7,9],
 "4":[null,2,3]}`) is centered on the documented 12/7/3 starting point;
 the winning point is picked by **lowest holdout force RMSE** — directly
-the documented method, not an invented one.
+the documented method, not an invented one. (`hyper-search` refines this:
+the cheapest model within one bootstrap standard error of the best, so
+holdout noise alone never buys a larger model.)
 
 ## Why iterative refinement (`al-run`) is the documented next step
 

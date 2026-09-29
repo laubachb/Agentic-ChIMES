@@ -2,7 +2,9 @@
 
 Local algorithms (svd, fast_svd, ridge, fast_ridge, ridgecv, lasso,
 lassolars) run directly through chimes_lsq.py's numpy/scikit-learn code
-paths as a plain local subprocess. `dlars`/`dlasso` (the DLARS-cliff-prone
+paths as a plain local subprocess. nsvd/nridge/nlasso are column-normalized
+variants solved here (stages/_solvers.py) and written out through
+chimes_lsq.py --read_output; use them whenever 3-/4-body terms are present. `dlars`/`dlasso` (the DLARS-cliff-prone
 path) require `machine` and submit via stages/_dlars_hpc.py, which polls
 the live job's dlars.log with stages/_cliff_monitor.py and auto-finalizes
 on a detected cliff -- see docs/commands/solve.md.
@@ -23,7 +25,7 @@ import sys
 from pathlib import Path
 
 from .. import config, machines
-from . import _dlars_hpc
+from . import _dlars_hpc, _solvers
 
 NAME = "solve"
 SUMMARY = "Solve for params.txt from A.txt/b.txt (local: svd/ridge/lassolars/...; dlars/dlasso via --machine)."
@@ -38,7 +40,8 @@ SCHEMA = {
         "dim": {"type": ["string", "null"], "description": "dim.txt from amat-build; required for algorithm=dlars/dlasso."},
         "algorithm": {
             "type": "string",
-            "enum": ["svd", "fast_svd", "ridge", "fast_ridge", "ridgecv", "lasso", "lassolars", "dlars", "dlasso"],
+            "enum": ["svd", "fast_svd", "ridge", "fast_ridge", "ridgecv", "lasso", "lassolars", "nsvd", "nridge", "nlasso", "nridgecv", "blocklasso", "dlars", "dlasso"],
+            "description": "n* = column-normalized: nsvd uses eps, nridge/nlasso use alpha, nridgecv picks alpha by 5-fold CV over whole training frames (needs amat-build's b-labeled.txt/natoms.txt next to b.txt); blocklasso = lassolars with each body-order block rescaled to the 2-body scale (needs fm_setup.log next to b.txt).",
             "default": "svd",
         },
         "alpha": {"type": "number", "default": 1.0e-4},
@@ -145,6 +148,48 @@ def _ensure_canonical_link(src: str, work_dir: Path, canonical_name: str) -> Non
     dst_path.symlink_to(src_path)
 
 
+def _run_normalized(args, algorithm: str, work_dir: Path) -> dict:
+    import numpy as np
+
+    A = np.loadtxt(args.A, ndmin=2)
+    b = np.loadtxt(args.b)
+    weights = np.loadtxt(args.weights) if getattr(args, "weights", None) else None
+    extra = {}
+    if algorithm == "blocklasso":
+        bdir = Path(args.b).resolve().parent
+        blocks = _solvers.block_counts(bdir / "fm_setup.log")
+        x = _solvers.block_lasso(A, b, blocks, alpha=args.alpha, weights=weights)
+        extra = {"blocks": {"n_2b": blocks[0], "n_3b": blocks[1], "n_4b": blocks[2]}}
+    elif algorithm == "nridgecv":
+        bdir = Path(args.b).resolve().parent
+        groups = _solvers.frame_groups(bdir / "b-labeled.txt", bdir / "natoms.txt")
+        labels = [ln.split()[0] for ln in (bdir / "b-labeled.txt").read_text().splitlines()]
+        force_rows = np.array([lab != "+1" for lab in labels])
+        x, chosen, curve = _solvers.ridge_cv(A, b, groups, folds=getattr(args, "folds", 5) or 5, weights=weights,
+                                             score_rows=force_rows)
+        extra = {"cv_alpha": chosen, "cv_rmse_by_alpha": curve, "n_frames_cv": int(groups.max() + 1)}
+        if chosen in (min(curve), max(curve)):
+            extra["cv_note"] = f"chosen alpha {chosen:g} is at the edge of the grid"
+    else:
+        x = _solvers.solve_normalized(A, b, algorithm, alpha=args.alpha, eps=args.eps, weights=weights)
+    np.savetxt(work_dir / "x.txt", x)
+    np.savetxt(work_dir / "Ax.txt", A @ x)
+
+    chimes_lsq_py = config.CHIMES_LSQ_ROOT / "src" / "chimes_lsq.py"
+    cmd = [sys.executable, str(chimes_lsq_py), "--A", str(Path(args.A).resolve()), "--b", str(Path(args.b).resolve()),
+           "--header", str(Path(args.header).resolve()), "--map", str(Path(args.map).resolve()),
+           "--algorithm", "dlars", "--read_output", "true"]
+    proc = subprocess.run(cmd, cwd=str(work_dir), capture_output=True, text=True)
+    log_path = work_dir / "solve.log"
+    log_path.write_text((proc.stderr or "") + f"\n[{algorithm}] alpha={args.alpha} eps={args.eps} nonzero={int((x != 0).sum())}/{x.size}\n")
+    if proc.returncode != 0 or "ENDFILE" not in proc.stdout:
+        raise RuntimeError(f"chimes_lsq.py --read_output failed (exit {proc.returncode}); see {log_path}\n{(proc.stderr or '')[-1500:]}")
+    params_path = work_dir / "params.txt"
+    params_path.write_text(proc.stdout)
+    return {"params": str(params_path), "force": str(work_dir / "force.txt"), "algorithm": algorithm,
+            "log": str(log_path), "n_nonzero": int((x != 0).sum()), "n_coefficients": int(x.size), **extra}
+
+
 def run(args) -> dict:
     for req in ("A", "b", "header", "map"):
         if not getattr(args, req, None):
@@ -156,9 +201,11 @@ def run(args) -> dict:
 
     if algorithm in _LOCAL_ALGORITHMS:
         return _run_local(args, algorithm, work_dir)
+    if algorithm in _solvers.NORMALIZED:
+        return _run_normalized(args, algorithm, work_dir)
 
     if algorithm not in _HPC_ALGORITHMS:
-        raise ValueError(f"unknown algorithm {algorithm!r}; known: {sorted(_LOCAL_ALGORITHMS | _HPC_ALGORITHMS)}")
+        raise ValueError(f"unknown algorithm {algorithm!r}; known: {sorted(_LOCAL_ALGORITHMS | _solvers.NORMALIZED | _HPC_ALGORITHMS)}")
 
     machine = getattr(args, "machine", None)
     if not machine:

@@ -68,3 +68,20 @@ def test_failing_stage_reports_error_with_log_tail(tmp_path):
     assert result["error"] == "boom"
     assert "last thing the library said" in result["log_tail"]
     assert result["log"].endswith("dataset-select.log")
+
+
+def test_dry_run_does_not_block_the_real_run(tmp_path):
+    """dry-run then real submission with identical inputs: the real call must
+    execute, not short-circuit to the dry run's recorded result."""
+    body = "return {'dry': bool(getattr(args, 'dry_run', False))}"
+    code = (
+        "import sys\n"
+        "from agentic_chimes import cli\n"
+        "from agentic_chimes.stages import dataset_select\n"
+        f"dataset_select.run = lambda args: {body.replace('return ', '')}\n"
+        "argv = " + repr(ARGV + ["--output-dir", str(tmp_path)]) + "\n"
+        "cli.main(argv + ['--dry-run']); cli.main(argv)\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    outs = [json.loads(chunk) for chunk in proc.stdout.replace("}\n{", "}\n\x00{").split("\x00")]
+    assert outs[0]["dry"] is True and outs[1]["dry"] is False

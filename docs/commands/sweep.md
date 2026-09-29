@@ -20,8 +20,15 @@ given; anything not given uses `base`'s value):
 |---|---|
 | `order_2b`, `order_3b`, `order_4b` | independently swept Chebyshev orders. `order_4b` entries of `null`/`0` mean "no 4-body term" for that point (matches `fm-setup-gen`'s own convention) |
 | `default_s_minim`, `default_s_maxim` | inner/outer cutoff fallback (same as `fm-setup-gen`'s `--default-s-minim`/`--default-s-maxim`) |
+| `special_maxim_3b`, `special_maxim_4b` | 3-/4-body outer cutoffs (`SPECIAL 3B/4B S_MAXIM: ALL`); `null` = same as the 2-body cutoff |
+| `exclude_3b`, `exclude_4b` | cluster types to drop (`EXCLUDE 3B/4B INTERACTION`). Each grid value is a list of element lists, e.g. `[[], [["Zr","Zr","Zr"]]]` compares "exclude nothing" with "exclude Zr-Zr-Zr" |
 | `alpha` | `solve`'s regularization strength |
-| `algorithm` | `solve`'s algorithm choice |
+| `algorithm` | `solve`'s algorithm choice. Raw `lassolars` switches 4-body columns (~10⁻⁷ of the 2-body scale) off; `blocklasso` does not, but measured worse on Cu-Zr (see `solve.md`) |
+
+The results table includes `relative_force_error` (holdout force RMSE ÷
+reference-force RMS). `sweep` reports and does not choose; for a staged,
+noise-aware choice over these same dimensions use
+[`hyper-search`](hyper-search.md).
 
 ## Usage
 

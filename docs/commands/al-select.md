@@ -31,7 +31,8 @@ not wired up in this stage.
 
 1. Each candidate frame's ChIMES-predicted energy is computed in-process
    via the same ctypes evaluator `evaluate` uses, then normalized per atom
-   (`energy / natoms`) — matching al_driver's own on-disk convention
+   (`energy / natoms`; small cells are evaluated as exact supercells, see
+   `docs/commands/evaluate.md`) — matching al_driver's own on-disk convention
    confirmed against `codes/al_driver-LLfork/utilities/new-get_dumb_ener_subjob.sh`'s
    `paste xyzlist.dat xyzlist.energies | awk '{print $NF/$1}'`.
 2. Those per-atom energies are written to `all.energies_normed`-equivalent

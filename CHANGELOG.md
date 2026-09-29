@@ -1,5 +1,133 @@
 # Changelog
 
+## Unreleased — benchmark and report agents; user-facing documentation
+
+- **Studies**: `study` stage (`--init` standard layout + `study.json`
+  registry, `--register key=path`, status). A study directory switches on
+  automatic login-node CPU-time bookkeeping (`usage/local.jsonl`, written by
+  the CLI).
+- **`usage`**: CPU-hours by phase and job, from `sacct` filtered by working
+  directory (catches al_driver's own jobs) plus the ledger. Reports charged
+  (allocated × elapsed) and used (TotalCPU from job steps) hours and
+  allocation efficiency. On the Cu-Zr study: 103 charged, 7.3 used.
+- **`hyper-search --machine` right-sizes its allocation** (cores = largest
+  stage's fit count) after the usage report showed ~2 % efficiency on full
+  112-core nodes.
+- **`benchmark`**: strong/weak LAMMPS scaling of the final model as one Slurm
+  job, then `--collect`: efficiency, ns/day, core-seconds per atom-step, and
+  CPU-hour estimates that use the measured cost at the packing each run would
+  use (per-core cost rose 1.8× from 1 rank to a full node on Cu-Zr), with a
+  note when multi-node estimates are extrapolated.
+- **`deploy`**: `06_deploy/` with params, `in.lammps.example`, `MODEL_CARD.md`
+  (accuracy ± SE, validity by minimum sampled distance, cost to run,
+  development cost, data licenses, caveats).
+- **`study-report`**: `REPORT_FACTS.json` + `REPORT.md` with every table
+  filled and narrative placeholders. MD runs are summarized from LAMMPS logs,
+  ensemble-aware (energy change is called drift only for NVE).
+- **Agents**: `chimes-benchmark`, `chimes-report-writer` (+ skills
+  `chimes-benchmarking`, `chimes-study-report`); `chimes-study` extended with
+  the MD, benchmark, deploy and report phases.
+- **Documentation rewritten for users**: new README; landing page; getting
+  started; a User guide (running a study, study layout, the agents, compute
+  and costs, the Cu-Zr worked example with real numbers); commands grouped by
+  phase.
+- Validated end to end on Cu-Zr: benchmark job (16 cases, 8.7 min), 10 ps MD
+  at 300 and 1,200 K, deploy, and the full report.
+
+## Unreleased — 4-body sweeps and cluster-type exclusions
+
+- **`hyper-search` `exclude` stage**: leave-one-type-out over 3-/4-body
+  cluster types (`EXCLUDE` blocks) with greedy rounds, each judged against
+  both the current and the stage-entry model so losses cannot accumulate.
+  Reports per-type coverage from chimes_lsq's log, coefficients saved and
+  score change. Adds a note when exclusions raise training error by >10 %.
+- **4-body stage**: order × cutoff × `four_body_solvers`, each extra solver
+  also refitting the 3-body baseline (like-for-like). Light by default at the
+  user's request (4-body builds scale steeply): orders 2-3, two cutoffs, one
+  solver, `--max-fit-seconds 600`.
+- **New solver `blocklasso`**: lassolars with each body-order block rescaled
+  to the 2-body scale. Measured on Cu-Zr it was worse everywhere (3-body
+  baseline 0.63 vs 0.32), so it is opt-in only.
+- **Tie-breaking by estimated MD cost** (clusters per atom ×
+  coefficients per body order, using the data's density), replacing
+  "shorter cutoff first", which chose a model ~2× more expensive.
+- **3-body grid extended to 7.0 Å on Cu-Zr**: order 4 @ 7.0 Å beat 6.33 Å
+  (holdout 0.28 vs 0.31).
+- `sweep` grid keys `special_maxim_3b/4b`, `exclude_3b/4b`; a
+  `relative_force_error` column.
+- Fixed: failed fits were cached and never retried (only done/timeout are
+  reused now); the inner `--machine` job always re-runs (`--force`) while
+  still reusing cached fits; the exclusion stage could report "every type
+  needed" without testing any.
+
+## Unreleased — hyperparameter agent
+
+- **`chimes-hyperparameter-tuner` subagent + `chimes-hyperparameter-search`
+  skill**: analyze → plan → search as an approved Slurm job → judged
+  result, `hyper_choice.json` and a written report. `chimes-study` phase 3
+  now delegates to it.
+- **`hyper-search` finished and validated**: 52 fits on real Cu-Zr in 12 min
+  on Dane `pdebug` via its own `--machine` path. Changes from the first
+  draft:
+  - ties are decided by the *paired*-bootstrap SE of each point's difference
+    to the best;
+  - cost ordering is cutoffs first, then coefficients;
+  - many-body cutoff candidates reach toward the second shell;
+  - the small-signal check flags instead of excluding;
+  - `--max-fit-seconds` with `timeout` status.
+- **Solver study** (4 bases × 5 solvers, `pdebug`): raw `lassolars` α=1e-5
+  stays the default; column-normalized solvers overfit freed many-body terms
+  on scarce data (holdout 1.1-1.5 vs 0.43).
+- **New `solve` algorithms** `nsvd`, `nridge`, `nlasso`, `nridgecv`:
+  column-normalized, written out through `chimes_lsq.py --read_output`;
+  `nridgecv` picks α by CV over whole training frames, scoring force rows.
+- **Fixed: 1-atom crystals treated as isolated atoms.** Pair analysis in
+  `data-curate` and `hyper-analyze` kept only `i < j` neighbour pairs,
+  dropping an atom's own periodic images, the only neighbours in a 1-atom
+  cell. `data-curate` removed such MatPES frames as `isolated_atom`; Cu-Zr
+  now keeps 158 frames instead of 152. Perfect-crystal first RDF peaks
+  (exactly at the minimum distance) are now detected too.
+- **Fixed: MPI binaries crashed inside Slurm steps.** `chimes_lsq` (and
+  single-process LAMMPS) inherited the step's `PMI_*` variables without their
+  file descriptor and segfaulted; they now start as singletons
+  (`hpc/local.singleton_env`).
+- **Fixed: a dry run blocked the real run.** The idempotency manifest
+  ignored `--dry-run`, so a real submission after a preview short-circuited
+  to the preview's result. Dry runs now record nothing.
+
+## Unreleased — hyperparameter phase (in progress) and evaluation fixes
+
+- **Fixed: `evaluate` compared forces in mixed units.** Reference forces in
+  `.xyzf` are hartree/bohr (ChIMES `doc/source/units.rst`); predictions are
+  kcal/mol/Å. The difference was taken unconverted, so "force RMSE" was
+  essentially the RMS of the predicted forces. Every force RMSE from
+  `evaluate`, `sweep` or `auto-build` before this fix, and any model choice
+  based on it, is invalid. New outputs: `relative_force_error`,
+  `rmse_energy_kcal_mol_per_atom`, `reference_force_rms_kcal_mol_ang`,
+  optional `--per-frame` errors.
+- **Fixed: small cells evaluated wrongly.** chimes_calculator's serial
+  interface mishandles cells thinner than twice the cutoff (energies off by
+  ~20 kcal/mol with `small=False`; forces summed over replicas with
+  `small=True`). `evaluate` and `al-select` now evaluate an exact
+  replicated supercell; this reproduced chimes_lsq's own `force.txt` to
+  5×10⁻⁶ kcal/mol/Å on 122 real triclinic frames.
+- **Fixed: chimes_lsq segfault on mixed cell headers.** A plain `Lx Ly Lz`
+  frame after a `NON_ORTHO` frame crashes chimes_lsq. `write_xyzf` now
+  writes every frame as `NON_ORTHO` when any frame is triclinic, and the
+  reader turns diagonal `NON_ORTHO` cells back into orthorhombic frames.
+- **New `hyper-analyze`**: per-pair minimum distances and RDF shells from
+  neighbour lists (any cell shape) → inner cutoffs, Morse lambdas,
+  outer-cutoff candidates, N_LAYERS per candidate, equation counts.
+- **New `hyper-search` (in development)**: staged search (2b → 3b → 4b →
+  lambda → refine) that chooses the cheapest model within one bootstrap
+  standard error of the best. It has a coefficients-per-equation budget and a
+  per-body-order column-scale diagnostic, caches and resumes fits, runs in
+  parallel, and can submit itself to Slurm. Open issues are listed in
+  `docs/commands/hyper-search.md`: local `lassolars` does not normalize
+  columns, so 4-body terms get zeroed; the `min_signal` default is too
+  aggressive; many-body cutoff candidates are too short (measured, see
+  `docs/concepts/cutoffs_and_lambdas.md`); a segfault inside Slurm steps.
+
 ## Unreleased — data selection and curation agent
 
 - **Data agent**: `chimes-data-curator` subagent + `chimes-data-curation`
@@ -137,7 +265,9 @@
     cancelled it. Default flipped to `--normalize false`; confirmed the
     same input then solved cleanly end to end on a second real submission
     (valid `ENDFILE`-terminated `params.txt`, sane holdout RMSE via
-    `evaluate`).
+    `evaluate`). *[Correction, later: that RMSE was computed with
+    `evaluate`'s unit bug and is not a valid accuracy figure; the
+    `params.txt` validity check stands.]*
 - 9 new unit tests (`test_dlars_hpc.py`, `test_solve_dlars_dispatch.py`,
   `test_amat_build_hpc.py`, plus 3 in `test_dry_run.py`) — 85 total, up
   from 71. The cliff-detection control flow (submit → poll → detect →

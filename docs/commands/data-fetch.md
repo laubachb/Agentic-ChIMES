@@ -38,8 +38,10 @@ chimes-agent data-fetch --source runs/OUTCAR_1,runs/OUTCAR_2 --elements Cu,Zr \
   first reads only the `elements`/`method` columns, the second reads
   coordinates for the sampled rows only.
 - **Cells** are rotated to the lower-triangular standard form chimes_lsq and
-  LAMMPS use (positions and forces rotated with them); orthorhombic results
-  are written as `Lx Ly Lz`, others as `NON_ORTHO`.
+  LAMMPS use (positions and forces rotated with them). A pool that contains
+  any triclinic frame is written entirely in `NON_ORTHO` form (chimes_lsq
+  segfaults on mixed headers; see `docs/concepts/units_and_conventions.md`);
+  an all-orthorhombic pool is written as `Lx Ly Lz`.
 - Non-3D-periodic rows and rows missing energy/forces are dropped (counted in
   `dropped`).
 - A data file that cannot be parsed is skipped, reported in

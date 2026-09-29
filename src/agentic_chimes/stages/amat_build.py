@@ -90,7 +90,16 @@ def run(args) -> dict:
 
     machine = getattr(args, "machine", None)
     if not machine:
-        proc = subprocess.run([str(chimes_lsq_bin), str(fm_setup_in)], cwd=str(work_dir), capture_output=True, text=True)
+        from ..hpc.local import singleton_env
+
+        timeout_s = getattr(args, "timeout_s", None)
+        try:
+            proc = subprocess.run([str(chimes_lsq_bin), str(fm_setup_in)], cwd=str(work_dir), capture_output=True, text=True,
+                                  env=singleton_env(), timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            log_path.write_text(str(exc.stdout or "")[-20000:])
+            raise TimeoutError(f"chimes_lsq exceeded {timeout_s} s building the design matrix (cluster counts grow "
+                               f"steeply with many-body cutoffs on small cells); see {log_path}") from exc
         log_path.write_text((proc.stdout or "") + (proc.stderr or ""))
         if proc.returncode != 0:
             raise RuntimeError(f"chimes_lsq exited {proc.returncode}; see {log_path}")

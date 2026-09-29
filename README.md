@@ -1,258 +1,174 @@
 # Agentic ChIMES
 
-A tool-calling CLI and Python API for building [ChIMES](https://chimes-lsq.readthedocs.io/)
-machine-learned interatomic potentials end to end: dataset selection, DFT/QM
-relabeling, `fm_setup.in` authoring, design-matrix generation, DLARS/LASSO
-solving, LAMMPS/holdout evaluation, and Slurm submission on LLNL and TACC
-HPC systems.
+Build [ChIMES](https://chimes-lsq.readthedocs.io/) machine-learned interatomic
+potentials by describing what you need. Open this repository in
+[Claude Code](https://claude.com/claude-code), say *"I need a ChIMES potential
+for liquid Cu-Zr"*, and a team of specialist agents finds and curates
+training data, chooses cutoffs and polynomial orders, fits and validates the
+model, benchmarks it, and writes up the whole study. They stop for your
+approval before anything is submitted to the cluster.
 
-**What this is:** every stage of the ChIMES model-building workflow exposed
-as a discrete command with a structured JSON contract — `chimes-agent
-<stage> --json-in in.json --json-out out.json`. A human or a coding agent
-(e.g. a Claude Code session) calls one stage at a time, inspects the result,
-and decides what to do next.
+Every step is also a plain command-line stage (`chimes-agent <stage>`) with a
+JSON contract, so everything the agents do can be run, inspected and
+repeated by hand.
 
-**What this is not:** an autonomous closed-loop orchestrator that runs a
-multi-cycle active-learning campaign by itself. Hyperparameter choices
-(regularization strength, basis order, dataset curation) stay a human/agent
-judgment call made *between* stage invocations — this repo makes each of
-those steps fast, reliable, and inspectable, not automatic.
-
-See [docs/](docs/) for the full documentation set; this README is the map.
+**Full documentation:** https://laubachb.github.io/Agentic-ChIMES/ (or `mkdocs serve`).
 
 ---
 
-## Repo layout
+## What a study produces
+
+| | |
+|---|---|
+| **A fitted model** | `params.txt` + `fm_setup.in`, ready for LAMMPS (`pair_style chimesFF`) |
+| **A model card** | what it is, holdout accuracy (with uncertainty), the distances and compositions it is valid for, data provenance and licenses |
+| **A cost model** | strong/weak scaling in LAMMPS and CPU-hour estimates for production runs ("100,000 atoms for 1 ns = N CPU-hours on M nodes") |
+| **A development ledger** | CPU-hours charged vs. used, by phase and job |
+| **A written report** | `REPORT.md`: data → hyperparameters → model → MD → performance → cost, with findings, caveats and next steps; every number traced to an artifact |
+
+## How it works
 
 ```
-Agentic-ChIMES/
-├── codes/                    # gitignored -- cloned fresh by `chimes-agent setup` (never pushed to this repo)
-│   ├── al_driver-LLfork/       # active-learning orchestration (reference for QM-driver contract)
-│   ├── chimes_lsq-LLfork/      # design-matrix generation (chimes_lsq) + DLARS/LASSO solver
-│   └── chimes_calculator-LLfork/  # force-field evaluator (ctypes + LAMMPS pair style)
-├── deps/                     # gitignored -- built/fetched by `chimes-agent setup`
-│   ├── lammps-chimes/          # -> codes/chimes_calculator-LLfork/etc/lmp/exe/
-│   └── quantum-espresso/       # cloned + built pw.x
-├── src/agentic_chimes/        # this repo's own code: the CLI + orchestration layer
-│   ├── cli.py                   # `chimes-agent` entry point
-│   ├── config.py                 # path/binary resolution (codes/, deps/, deps/installed.json)
-│   ├── setup/                    # install/bootstrap subsystem (`chimes-agent setup`)
-│   ├── machines/                 # HPC machine profiles (Dane, Stampede3, + your own YAML)
-│   ├── qm_drivers/               # QM-driver plugin registry (VASP/CP2K/DFTB+/Gaussian/QE)
-│   ├── converters/                # unit conventions, QE->xyzf conversion
-│   ├── stages/                    # one module per CLI subcommand
-│   ├── io/                        # fm_setup.in and .xyzf parsers/writers
-│   └── hpc/                       # Slurm submission (wraps al_driver's own helpers.py)
-├── tests/unit/                # no HPC/allocation needed; run these on any machine
-└── docs/                      # concepts, per-command reference, worked tutorial
+ you ─► plan ─► data ─► hyperparameters ─► model ─► active learning ─► MD ─► benchmark ─► deploy + report
+         │        │            │              │            │             │         │              │
+       STUDY.md  data-      hyperparameter  fit-        al-select/     lammps-  benchmark     report-
+                 curator     tuner          reviewer     al-run         run      agent         writer
 ```
 
-The vendored forks under `codes/` are cloned fresh by `chimes-agent setup`
-(see `setup/clone_codes.py`) from their real `LindseyLab-umich` GitHub
-remotes, pinned to a specific validated commit — `codes/` is gitignored and
-**never pushed to this repo** (these are the lab's own forks; this repo
-should not embed or redistribute their contents/history). They are never
-edited in place either — everything new lives in `src/agentic_chimes/`,
-which subprocesses the vendored binaries/scripts or calls their
-Python/ctypes APIs directly. A fresh clone of Agentic-ChIMES has no
-`codes/` directory at all until you run `chimes-agent setup`. To move to a
-newer commit of a fork, bump its `ref` in `setup/clone_codes.py:REPOS` and
-run `chimes-agent setup --component codes --force`.
+- **The orchestrator** is the main Claude Code conversation (skill
+  `chimes-study`). It plans the study with you, keeps `STUDY.md`, delegates
+  each phase to a specialist agent, and brings every decision and cluster
+  submission back to you.
+- **Specialist agents** (`.claude/agents/`): data curation, hyperparameter
+  search, independent fit review, benchmarking and compute accounting, the
+  final report, and cheap job monitoring. Each follows a written playbook
+  (`.claude/skills/`) and returns a fixed-format report.
+- **Stages** do the deterministic work: fetch from open DFT databases,
+  label with Quantum ESPRESSO, build and solve the ChIMES fit, evaluate,
+  run LAMMPS, submit to Slurm. `chimes-agent <stage> --describe` prints any
+  stage's full contract.
+- **Guardrails**: nothing is submitted without a dry run and your approval;
+  one level of theory per fit is enforced; login-node compute stays small;
+  `codes/` (the upstream ChIMES repositories) is never edited.
 
----
+## Quick start
 
-## Install
+### 1. Install
 
 ```bash
-git clone <this-repo>
-cd Agentic-ChIMES
-pip install -e .          # installs the `chimes-agent` CLI (numpy, pyyaml, jsonschema only)
+git clone https://github.com/laubachb/Agentic-ChIMES.git && cd Agentic-ChIMES
+pip install -e ".[data,al-select]"          # the chimes-agent CLI + open-data and AL extras
+chimes-agent setup --machine dane --component all   # clones the ChIMES forks into codes/ and builds
+chimes-agent setup --status                          # chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO
 ```
 
-Then build the underlying ChIMES toolchain, LAMMPS, and Quantum ESPRESSO for
-your machine:
+Built-in machine profiles: `dane` (LLNL LC), `stampede3` (TACC). For another
+cluster, write a profile YAML and pass its path to `--machine`
+([machine profiles](docs/concepts/machine_profiles.md)). Optional: set
+`HF_TOKEN` (a free Hugging Face token) so open-data downloads are not
+rate-limited on shared lab networks.
+
+### 2. Start a study
+
+Open Claude Code in the repository and describe the goal. The more you say
+about what the model is for, the better the plan:
+
+> Build a ChIMES potential for Cu-Zr metallic glasses: liquid and amorphous,
+> 300-2000 K. Label with Quantum ESPRESSO on Dane, bank pls2. Study
+> directory /p/lustre2/me/studies/cuzr.
+
+You will be asked about things only you can decide: which DFT settings
+labels must match (so later active learning stays consistent), how much
+compute to spend, and approval for each cluster job. Everything else is
+decided, justified in writing, and recorded in the study directory.
+
+### 3. Read the results
+
+```
+/p/lustre2/me/studies/cuzr/
+  REPORT.md                 the write-up (start here)
+  06_deploy/MODEL_CARD.md   the model, its validity range and cost
+  06_deploy/params.txt      the model
+  05_bench/benchmark.json   scaling and the CPU-hour cost model
+  usage/usage_report.json   compute used
+  01_data/ 02_fit/ 03_al/ 04_md/   every intermediate, resumable
+```
+
+A study can be stopped and resumed at any phase; ask Claude to "resume the
+study in <dir>".
+
+## A real example: Cu-Zr from MatPES
+
+Built while developing this toolkit (the full report is in the
+[worked example](docs/guide/example_cuzr.md)):
+
+- **Data:** the data agent searched ~500 open datasets. The best source was
+  MatPES-PBE: 169 Cu/Zr-only frames, curated to 158 (9 vacuum/isolated-atom
+  frames, 1 duplicate and 1 energy outlier removed).
+- **Hyperparameters:** 61 fits in all. The search chose 2-body order 6 at
+  8 Å and 3-body order 4 at 7 Å, with no 4-body terms (they never helped).
+  It excluded the Cu-Cu-Zr and Cu-Zr-Zr 3-body types, whose removal cost
+  nothing measurable, while Zr-Zr-Zr was essential. The result is 52
+  coefficients, with holdout relative force error 0.31 ± 0.06.
+- **Finding:** at that error level the data (tiny cells, 126 training
+  frames) is the limit, not the settings. The report says so and recommends
+  active learning.
+
+## Using the stages directly
+
+The agents are optional. Every stage runs by hand with the same contract:
 
 ```bash
-chimes-agent setup --machine dane --component all
-# or just one piece:
-chimes-agent setup --machine dane --component chimes_calculator
-# or just clone the vendored forks into codes/ without building anything (no --machine needed):
-chimes-agent setup --component codes
+chimes-agent data-search --elements Cu,Zr                        # which open datasets exist
+chimes-agent data-fetch --source colabfit:colabfit/MatPES-PBE-2025.2 --elements Cu,Zr --output-dir d/fetch
+chimes-agent data-curate --frames d/fetch/pool.xyzf --elements Cu,Zr --output-dir d/curate
+chimes-agent hyper-search --data-manifest d/curate/data_manifest.json --machine dane --dry-run --output-dir d/fit
+chimes-agent solve --describe                                    # any stage's full contract
 ```
 
-`setup` always starts by cloning the three vendored forks
-(`al_driver-LLfork`, `chimes_lsq-LLfork`, `chimes_calculator-LLfork`) into
-`codes/` from their real GitHub remotes at a pinned commit — `codes/` is
-gitignored, so a fresh checkout of this repo has none of that source until
-you run this (see [docs/concepts/vendored_forks.md](docs/concepts/vendored_forks.md)).
-It then runs each fork's own (unmodified) `install.sh` under the right
-modules for your machine, plus a from-scratch clone+build of Quantum
-ESPRESSO (not vendored anywhere — there was no QE support in any of these
-repos before this one). Built artifact paths are recorded in
-`deps/installed.json`; every stage resolves the binaries/libraries it needs
-from there (or from an explicit `AGENTIC_CHIMES_*_BIN`/`AGENTIC_CHIMES_*_LIB`
-env var override). Check what's installed with:
+Stdout is always exactly one JSON object; logs go to `<output-dir>/<stage>.log`.
+A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
+[Getting started](docs/getting_started.md#try-the-stages-without-hpc).
+
+## Commands by phase
+
+| Phase | Commands |
+|---|---|
+| Study | `study` (create / register / status), `usage` (CPU-hours), `study-report` |
+| Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `dataset-select`, `qe-relabel` |
+| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate` |
+| Active learning | `al-select`, `al-run` |
+| MD, performance, deployment | `lammps-run`, `benchmark`, `deploy` |
+| Infrastructure | `setup`, `submit` |
+
+Reference for each: [docs/commands/](docs/commands/index.md).
+
+## Status and limitations
+
+- Tested on LLNL Dane (Slurm, MVAPICH2, Intel). Other Slurm clusters need a
+  machine profile; PBS/LSF are not supported.
+- Quantum ESPRESSO is the built-in labeler; al_driver supports others for
+  its own loop.
+- Open data comes from ColabFit on Hugging Face; local DFT output (VASP,
+  QE, extxyz, anything ASE reads) is supported directly.
+- `lammps-run` and `benchmark` use orthorhombic cells; triclinic training
+  data is fine for fitting.
+- Not yet agents: MD candidate generation and active-learning orchestration
+  (the `chimes-active-learning` skill and `al-run` cover it by hand).
+
+## Development
 
 ```bash
-chimes-agent setup --status
+pip install -e ".[dev,data,al-select,docs]"
+pytest tests/unit            # no HPC needed; tests needing built components skip cleanly
+mkdocs build --strict        # the documentation site
 ```
 
-Built-in machine profiles: `dane` (LLNL LC), `stampede3` (TACC). Add your
-own by pointing `--hpc /path/to/your_machine.yaml` at a file following the
-same schema — see [docs/concepts/machine_profiles.md](docs/concepts/machine_profiles.md).
+Architecture and conventions: [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md)
+and [CLAUDE.md](CLAUDE.md). A new stage exposes `NAME`, `SUMMARY`, `SCHEMA`,
+`add_arguments`, `run`, is registered in `cli.STAGE_MODULE_NAMES`, and gets a
+`docs/commands/` page; `tests/unit/test_claude_setup.py` checks that the
+agent configuration mentions it. See [CHANGELOG.md](CHANGELOG.md) for history.
 
----
-
-## Quickstart (no HPC allocation needed)
-
-Every stage prints one JSON object; chain them by hand or from a script.
-This example fits a tiny model against a bundled ChIMES test fixture (kept
-to a small basis — order `6 2` — on purpose: `solve --algorithm svd` does a
-dense SVD, and a much larger basis, e.g. `12 5 4`, is slow enough on a
-login node that you want the DLARS/HPC path instead; see
-[docs/commands/solve.md](docs/commands/solve.md)):
-
-```bash
-export FM=codes/chimes_lsq-LLfork/test_suite-lsq/test_4atoms.2
-
-chimes-agent fm-setup-gen \
-  --trjfile "$(pwd)/$FM/dump2.xyzf" --nframes 250 \
-  --elements C,H --order '{"2":6,"3":2}' \
-  --pair-cutoffs '{"C-C":[1.29,5.0],"C-H":[1.29,5.0],"H-H":[0.9,5.0]}' \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent amat-build --fm-setup-in /tmp/chimes-quickstart/fm_setup.in \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent solve --algorithm svd \
-  --A /tmp/chimes-quickstart/A.txt --b /tmp/chimes-quickstart/b.txt \
-  --header /tmp/chimes-quickstart/params.header --map /tmp/chimes-quickstart/ff_groups.map \
-  --output-dir /tmp/chimes-quickstart
-
-chimes-agent evaluate --params /tmp/chimes-quickstart/params.txt \
-  --holdout-xyzf "$FM/dump2.xyzf" --max-frames 25 --json-out /tmp/chimes-quickstart/eval.json
-```
-
-(`evaluate`'s underlying C++ library prints its own verbose init logging
-straight to stdout below the Python layer — pass `--json-out` rather than
-parsing raw stdout if you're doing this from a script or agent; see
-[docs/commands/evaluate.md](docs/commands/evaluate.md).)
-
-`--describe` prints any stage's full input/output schema without running it:
-
-```bash
-chimes-agent solve --describe
-```
-
-For a full real-study walkthrough (holdout split → fit → DLARS solve on
-HPC → evaluate → LAMMPS validate), see
-[docs/tutorials/end_to_end_holdout_study.md](docs/tutorials/end_to_end_holdout_study.md).
-
----
-
-## The stage contract
-
-Every `chimes-agent <stage>` subcommand:
-
-- takes input via `--json-in FILE` or discrete flags (never both silently —
-  `--json-in` overrides matching flags),
-- writes **exactly one JSON object** to stdout or `--json-out FILE` — anything
-  else a stage or its native libraries print (chimes_calculator's banner,
-  al_driver's progress output) is diverted to `<output-dir>/<stage>.log`,
-  reported back as `stage_log`; failures are `{"error", "log", "log_tail"}`
-  with exit code 1,
-- supports `--describe` to print its JSON Schema + summary without running,
-- if it writes files, takes `--output-dir` and is **idempotent** there: a
-  second invocation with the same inputs short-circuits and reprints the
-  prior result instead of re-running; different inputs at the same
-  `--output-dir` are refused unless you pass `--force` (this replaces
-  al_driver's append-only, substring-parsed `restart.dat` with something an
-  agent can actually introspect),
-- if it submits to HPC, supports `--dry-run` to render (not submit) the
-  sbatch script, and `--machine {dane,stampede3,<your-profile.yaml>}` to pick
-  the machine.
-
-Primitive stages don't call one another — composing them is the caller's
-job. The explicitly-named composites (`model-build`, `sweep`, `auto-build`)
-are the exception, and say so. See [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md).
-
----
-
-## Using it with Claude Code
-
-The repo ships its own agent setup: `CLAUDE.md` (rules + how to drive the
-CLI), four skills in `.claude/skills/` (auto-build, hands-on model building,
-HPC jobs, active learning), two subagents in `.claude/agents/` (a cheap
-read-only job monitor and an independent fit reviewer), and shared
-permissions in `.claude/settings.json`. Open Claude Code in this directory
-and ask in plain language, e.g. *"build a ChIMES model from
-`configs.xyzf`, labeling with QE on Dane"*. See
-[docs/concepts/claude_code_integration.md](docs/concepts/claude_code_integration.md).
-
----
-
-## Commands
-
-| Command | Status | Purpose |
-|---|---|---|
-| `setup` | **implemented** | Build/fetch chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO for a machine |
-| `fm-setup-gen` | **implemented** | Generate `fm_setup.in` from typed parameters (elements, cutoffs, order, fit flags) |
-| `amat-build` | **implemented** (local or `--machine`) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
-| `solve` | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
-| `model-build` | **implemented** | Complete build: amat-build then solve, sequentially |
-| `auto-build` | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
-| `data-search` | **implemented** | Search open DFT datasets (ColabFit on Hugging Face) for a chemical system |
-| `data-fetch` | **implemented** | Fetch matching configurations from a dataset or local DFT files into one `.xyzf` + provenance |
-| `data-generate` | **implemented** | Strained/rattled/substituted supercells for QE labeling |
-| `data-curate` | **implemented** | Filter, analyze coverage, subsample and split into a base dataset + `data_manifest.json` |
-| `dataset-select` | **implemented** | FPS / random / stratified-holdout sampling |
-| `sweep` | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm + comparison table (not auto-tuning) |
-| `evaluate` | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |
-| `lammps-run` | **implemented** (local) | Single-point/MD via the ChIMES-patched LAMMPS build |
-| `qe-relabel` | **implemented** | Submit Quantum ESPRESSO single-point jobs; `--collect` converts output to `.xyzf` |
-| `submit` | **implemented** | Generic Slurm submit/status/cancel/dry-run |
-| `al-run` | **implemented** | Launch al_driver's own active-learning loop (`main.py`) as a detached background process |
-| `al-select` | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` (wraps `gen_selections.py`); needs the `al-select` extra (`matplotlib`/`cycler`) |
-
-All stages are implemented now. See
-[docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md#phasing)
-for the build history.
-
----
-
-## Documentation
-
-**Full searchable site: https://laubachb.github.io/Agentic-ChIMES/** (built
-with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) from
-the same files linked below; deployed by
-[`.github/workflows/docs.yml`](.github/workflows/docs.yml) on push to
-`master` — requires enabling **Settings → Pages → Source → GitHub Actions**
-once for the repo). Build/browse it locally:
-
-```bash
-pip install -e ".[docs]"
-mkdocs serve   # live-reloading dev server at http://127.0.0.1:8000
-# or: mkdocs build --strict   # static site in ./site/
-```
-
-- [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md) — the stage abstraction, manifest/idempotency, phasing plan
-- [docs/concepts/vendored_forks.md](docs/concepts/vendored_forks.md) — why `codes/` is gitignored and cloned fresh, pinned commits, bumping a pin
-- [docs/concepts/machine_profiles.md](docs/concepts/machine_profiles.md) — HPC machine profiles, adding your own cluster
-- [docs/concepts/qm_driver_plugins.md](docs/concepts/qm_driver_plugins.md) — the QM-driver registry, how QE slots in, how to add another code
-- [docs/concepts/units_and_conventions.md](docs/concepts/units_and_conventions.md) — unit conventions and the guardrails baked in as defaults (Dane `--ntasks-per-node`, lustre2 file-count quota, hartree/bohr↔eV/Å)
-- [docs/concepts/cutoffs_and_lambdas.md](docs/concepts/cutoffs_and_lambdas.md) — which cutoff/λ/order choices are documented ChIMES practice vs. reasonable defaults, and how `auto-build` derives them from training data
-- [docs/commands/](docs/commands/) — one page per subcommand
-- [docs/tutorials/end_to_end_holdout_study.md](docs/tutorials/end_to_end_holdout_study.md) — a full real-study walkthrough
-
-## Testing
-
-```bash
-pip install -e ".[dev]"
-pytest tests/unit          # no HPC/allocation needed
-```
-
-Tests that need a built component (e.g. `chimescalc_lib` for `evaluate`)
-skip cleanly if `chimes-agent setup` hasn't been run for that component yet,
-rather than failing. HPC-dependent integration checks (a real Slurm
-submission, a real DLARS solve, a real QE job) are not part of this suite —
-see the verification section of [docs/concepts/stages_and_contracts.md](docs/concepts/stages_and_contracts.md).
+Training data fetched from open databases keeps its original license. The
+model card and report list each source; cite them when you publish.

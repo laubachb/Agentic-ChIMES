@@ -12,27 +12,37 @@ can stop and resume.
 
 ## Study layout
 
+Create it with `chimes-agent study --init <dir> --name ... --goal "<user's request>" --elements ...`
+(on /p/lustre2 for HPC work). `study.json` is the registry every phase writes
+its artifacts into (`study --study <dir> --register key=path`), and marks the
+directory so login-node CPU time is recorded automatically.
+
 ```
-<study>/                      under /p/lustre2/$USER/... (HPC jobs need it)
-  STUDY.md                    goal, decisions log, phase status (you keep this)
-  01_data/                    DATA_PLAN.md, fetch_*/ generate/ qe_*/ curate/
-    curate/data_manifest.json -> handoff to phase 3
-  02_fit/                     sweeps, chosen params.txt, fit report
-  03_al/                      al_driver study / al-select rounds
+<study>/study.json  STUDY.md         goal, decisions log, phase status (you keep STUDY.md)
+  01_data/     DATA_PLAN.md, fetch_*/ generate/ qe_*/ curate/data_manifest.json
+  02_fit/      search/hyper_report.json, search/best/{params.txt,hyper_choice.json}, HYPER_REPORT.md
+  03_al/       al_driver study / al-select rounds
+  04_md/       lammps-run validation runs
+  05_bench/    benchmark.json, BENCHMARK.md
+  06_deploy/   params.txt, in.lammps.example, MODEL_CARD.md
+  usage/       usage_report.json, local.jsonl (CPU-hour ledger)
+  REPORT.md    REPORT_FACTS.json
 ```
 
 ## Phases
 
 | # | Phase | Who | Hands off |
 |---|---|---|---|
-| 1 | Plan | you, with the user | `STUDY.md` |
-| 2 | Data selection and curation | **`chimes-data-curator`** subagent | `01_data/curate/data_manifest.json` |
-| 3 | Hyperparameter search | not yet an agent: `chimes-build-model` / `chimes-auto-build` skills | sweep table, chosen settings |
-| 4 | Build model (default weighting) | not yet an agent: `chimes-build-model` | `02_fit/params.txt` + `chimes-fit-reviewer` verdict |
-| 5 | Active learning | not yet an agent: `chimes-active-learning` | stabilized model |
+| 1 | Plan | you, with the user | `study.json`, `STUDY.md` |
+| 2 | Data selection and curation | **`chimes-data-curator`** | `01_data/curate/data_manifest.json` |
+| 3 | Hyperparameter search (cutoffs, λ, orders, 4-body, exclusions) | **`chimes-hyperparameter-tuner`** | `02_fit/search/best/` + `HYPER_REPORT.md` |
+| 4 | Build/check the model (default weighting) | you + `chimes-fit-reviewer` | final `params.txt` registered |
+| 5 | Active learning | not yet an agent: `chimes-active-learning` skill | stabilized model |
+| 6 | MD validation | not yet an agent: `lammps-run` (orthorhombic cells) | `04_md/*` registered as `md_runs` |
+| 7 | Benchmark + compute accounting | **`chimes-benchmark`** | `05_bench/benchmark.json`, `usage/usage_report.json` |
+| 8 | Deploy + final report | `deploy`, then **`chimes-report-writer`** | `06_deploy/MODEL_CARD.md`, `REPORT.md` |
 
-An MD agent (candidate generation, stability checks) is planned. Until
-then, `lammps-run` covers MD.
+An MD agent (candidate generation, stability checks) is planned.
 
 ## 1. Plan
 
@@ -59,6 +69,14 @@ fixed-format report. Then:
 - `DONE`: check `data_manifest.json` exists and read its `warnings` and
   `pairs`; log the result in `STUDY.md`.
 
+## 3. Hyperparameters
+
+Delegate to `chimes-hyperparameter-tuner` with the manifest path, study
+path, and the user's MD cost limits / compute budget. `NEEDS_JOB`: show the
+user the dry-run job (fits, node, walltime), submit on approval, delegate
+waiting to `chimes-job-monitor`, then resume the tuner to interpret
+`hyper_report.json`. Log the chosen settings and the reasons in `STUDY.md`.
+
 ## 3-4. Fit
 
 Read `data_manifest.json`: `train_xyzf`/`holdout_xyzf`, `level_of_theory`,
@@ -74,6 +92,18 @@ Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 New frames must be labeled with exactly the level of theory in
 `data_manifest.json` (same QE settings hash in `provenance.json`); curate
 each round's labels with the base data using the same checks.
+
+## 6-8. Validate, benchmark, deploy, report
+
+- MD: run `lammps-run` (or LAMMPS directly) in `04_md/<name>/` at the
+  conditions the user cares about; register each run
+  (`--register md_runs=<dir>`). Unstable runs are the signal for active
+  learning.
+- Delegate to `chimes-benchmark` with the user's intended production runs.
+  It returns the scaling job for approval, then the sizing recipe and the
+  study's CPU-hours.
+- `chimes-agent deploy --study <dir>` packages the model and its card.
+- Delegate to `chimes-report-writer` for `REPORT.md`. Offer to publish it.
 
 ## Always
 

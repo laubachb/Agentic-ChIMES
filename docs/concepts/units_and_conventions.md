@@ -8,7 +8,8 @@ is a one-line fix, not a hunt through every stage.
 | Quantity | ChIMES params.txt / A-matrix convention | Notes |
 |---|---|---|
 | Energy | kcal/mol | `EV_TO_KCAL_PER_MOL = 23.0605` |
-| Force | kcal/mol/Å (fit convention) | some upstream tooling (`vasp2xyzf.py`) instead targets hartree/bohr — `qe2xyzf.py` must be explicit about which one it writes |
+| Force in training/holdout `.xyzf` | **hartree/bohr** | ChIMES `doc/source/units.rst`; written by `qe2xyzf.py`, `data-fetch`, `vasp2xyzf.py` |
+| Force in `b.txt`, `force.txt`, `chimes_calculator` output | kcal/mol/Å | `HARTREE_PER_BOHR_TO_KCAL_PER_MOL_ANG` ≈ 1185.8; `evaluate` converts the reference side before comparing |
 | Force (hartree/bohr) | — | `HARTREE_PER_BOHR_TO_EV_PER_ANG = 51.4221` (product of Hartree→eV and Bohr→Å) |
 | Stress (ctypes return) | ChIMES-internal | `CHIMES_STRESS_TO_GPA = 6.9479` to convert; note the `chimescalc` standalone binary's own printed "Stress tensors (GPa)" output is already converted, so no further scaling is needed there |
 | QE energy (Rydberg) | — | `RY_TO_EV = 13.605693009` (1 Ry = half a Hartree); chain with `EV_TO_KCAL_PER_MOL` via `ry_to_kcal_per_mol()` |
@@ -47,11 +48,25 @@ left for a caller to remember:
   rather than finalizing from a restart file that's already past the
   cliff.
 
+## Cell formats in `.xyzf`
+
+Orthorhombic frames are written `Lx Ly Lz`; triclinic frames as
+`NON_ORTHO` followed by the a, b, c lattice vectors (lower-triangular:
+a along x, b in the xy-plane). **If any frame in a file is triclinic, every
+frame in it is written as `NON_ORTHO`**. chimes_lsq segfaults when a plain
+`Lx Ly Lz` frame follows a `NON_ORTHO` one in the same trajectory; this was
+found on curated MatPES data and reproduced with a two-frame file.
+chimes_lsq treats a `NON_ORTHO` cell with zero off-diagonals as
+orthorhombic, and so does `io/xyzf.read_xyzf`. The token must be spelled
+`NON_ORTHO`; chimes_lsq does not recognise `NON-ORTHO`.
+
 ## Where a DFT/QM comparison needs a unit fix and where it doesn't
 
-A DFT-vs-ChIMES comparison (e.g. holdout force RMSE against raw QM output)
-needs the appropriate `converters.units` conversion applied to the QM side
-first. A ChIMES-vs-ChIMES comparison (e.g. `evaluate --params modelA
+A DFT-vs-ChIMES comparison (e.g. holdout force RMSE against the reference
+forces in an `.xyzf`) needs the appropriate `converters.units` conversion
+applied to the reference side first: `.xyzf` forces are hartree/bohr,
+predictions kcal/mol/Å. `evaluate` got this wrong until it was fixed (see
+`docs/commands/evaluate.md`). A ChIMES-vs-ChIMES comparison (e.g. `evaluate --params modelA
 --params modelB` committee mode, or comparing two fits' predictions against
 each other) needs no such factor — both sides are already in the same
 `params.txt` convention.

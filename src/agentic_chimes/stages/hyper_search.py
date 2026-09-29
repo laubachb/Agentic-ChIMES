@@ -8,6 +8,10 @@ Stages (each a small grid; later stages hold earlier choices fixed):
           2-body model by more than `tolerance`
   4b      order_4b x s_maxim_4b, 2+3-body fixed; `four_body`: off | on |
           auto (run only if 3-body improved the score by > min_gain)
+  exclude leave-one-type-out over the model's 3-/4-body cluster types (EXCLUDE
+          blocks), greedily dropping types whose removal leaves the fit
+          statistically tied; reports each type's data coverage and the
+          score change when it is removed
   lambda  one scale factor on every pair's Morse lambda
   refine  order_2b +/- 2 around the choice, many-body terms fixed
           (coordinate search can leave 2b slightly off after 3b is added)
@@ -48,9 +52,9 @@ SUMMARY = "Staged search over cutoffs, Morse lambdas and 2b/3b/4b orders; picks 
 DEFAULTS = {
     "orders_2b": [8, 10, 12, 14, 16, 18],
     "orders_3b": [4, 6, 8, 10],
-    "orders_4b": [2, 3, 4],
+    "orders_4b": [2, 3],  # 4-body builds scale steeply; order 4 is ~3,000+ coefficients for a binary
     "lambda_scales": [0.9, 1.0, 1.1],
-    "stages": ["2b", "3b", "4b", "lambda", "refine"],
+    "stages": ["2b", "3b", "4b", "exclude", "lambda", "refine"],
 }
 
 SCHEMA = {
@@ -66,6 +70,8 @@ SCHEMA = {
         "orders_2b": {"type": "array", "items": {"type": "integer"}, "default": DEFAULTS["orders_2b"]},
         "orders_3b": {"type": "array", "items": {"type": "integer"}, "default": DEFAULTS["orders_3b"]},
         "orders_4b": {"type": "array", "items": {"type": "integer"}, "default": DEFAULTS["orders_4b"]},
+        "four_body_solvers": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Solvers the 4b stage compares; each extra solver refits the 3-body baseline too, so every 4-body point is compared like for like, and doubles the (expensive) 4-body builds. Default: only the search solver. Add blocklasso to test whether raw lassolars is hiding 4-body signal (on Cu-Zr it was not: blocklasso was worse everywhere)."},
+        "exclude_rounds": {"type": "integer", "default": 2, "description": "Greedy rounds of the exclude stage (each round tries removing every remaining 3-/4-body cluster type)."},
         "s_maxim_2b": {"type": ["array", "null"], "items": {"type": "number"}, "description": "Default: hyper-analyze candidates."},
         "s_maxim_3b": {"type": ["array", "null"], "items": {"type": "number"}},
         "s_maxim_4b": {"type": ["array", "null"], "items": {"type": "number"}},
@@ -73,7 +79,9 @@ SCHEMA = {
         "objective": {"type": "string", "enum": ["auto", "force", "force+energy"], "default": "auto", "description": "auto = force+energy when energies are fitted, else force."},
         "energy_weight": {"type": "number", "default": 0.1, "description": "Score per kcal/mol/atom of energy RMSE, for objective force+energy."},
         "tolerance": {"type": "number", "default": 0.03, "description": "Accept a cheaper model scoring within this fraction of the best, or within one bootstrap standard error of it if that is larger."},
-        "min_signal": {"type": "number", "default": 1.0e-6, "description": "3-/4-body columns whose median norm is below this fraction of the 2-body median are numerically inert; such points are never chosen."},
+        "min_signal": {"type": "number", "default": 1.0e-9, "description": "Flag 3-/4-body terms whose median column norm is below this fraction of the 2-body median: they can only act through very large coefficients. Flagged, not excluded, unless exclude_inert."},
+        "exclude_inert": {"type": "boolean", "default": False},
+        "max_fit_seconds": {"type": ["number", "null"], "default": 600, "description": "Abandon a fit whose design-matrix build exceeds this (reported as status timeout)."},
         "min_gain": {"type": "number", "default": 0.05, "description": "four_body=auto runs 4b only if 3b improved the score by at least this fraction."},
         "max_param_ratio": {"type": "number", "default": 0.5, "description": "Coefficients per equation above which a point is never chosen."},
         "fitener": {"type": ["boolean", "null"], "description": "Default: data_manifest fit_hints.fitener."},
@@ -84,6 +92,7 @@ SCHEMA = {
         "machine": {"type": ["string", "null"], "description": "Submit the whole search as one Slurm job on this machine."},
         "queue": {"type": "string", "default": "batch"},
         "walltime_hours": {"type": "number", "default": 4.0},
+        "cores": {"type": ["integer", "null"], "description": "Cores to request with --machine; default = the largest stage's fit count (capped at a node). Charged hours scale with this."},
     },
 }
 
@@ -107,6 +116,8 @@ def add_arguments(parser) -> None:
     parser.add_argument("--orders-2b", dest="orders_2b", type=_ints, default=None)
     parser.add_argument("--orders-3b", dest="orders_3b", type=_ints, default=None)
     parser.add_argument("--orders-4b", dest="orders_4b", type=_ints, default=None)
+    parser.add_argument("--four-body-solvers", dest="four_body_solvers", type=lambda s: [x for x in s.split(",") if x], default=None)
+    parser.add_argument("--exclude-rounds", dest="exclude_rounds", type=int, default=2)
     parser.add_argument("--s-maxim-2b", dest="s_maxim_2b", type=_floats, default=None)
     parser.add_argument("--s-maxim-3b", dest="s_maxim_3b", type=_floats, default=None)
     parser.add_argument("--s-maxim-4b", dest="s_maxim_4b", type=_floats, default=None)
@@ -115,7 +126,9 @@ def add_arguments(parser) -> None:
     parser.add_argument("--energy-weight", dest="energy_weight", type=float, default=0.1)
     parser.add_argument("--tolerance", type=float, default=0.03)
     parser.add_argument("--min-gain", dest="min_gain", type=float, default=0.05)
-    parser.add_argument("--min-signal", dest="min_signal", type=float, default=1.0e-6)
+    parser.add_argument("--min-signal", dest="min_signal", type=float, default=1.0e-9)
+    parser.add_argument("--exclude-inert", dest="exclude_inert", action="store_true", default=False)
+    parser.add_argument("--max-fit-seconds", dest="max_fit_seconds", type=float, default=600)
     parser.add_argument("--max-param-ratio", dest="max_param_ratio", type=float, default=0.5)
     parser.add_argument("--fitener", type=lambda s: s.lower() in ("1", "true", "yes"), default=None)
     parser.add_argument("--algorithm", default="lassolars")
@@ -125,6 +138,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--machine", default=None)
     parser.add_argument("--queue", default="batch")
     parser.add_argument("--walltime-hours", dest="walltime_hours", type=float, default=4.0)
+    parser.add_argument("--cores", type=int, default=None)
 
 
 def _get(args, key):
@@ -139,6 +153,20 @@ def _masses(elements, given):
     return {e: float(given.get(e, round(atomic_masses[atomic_numbers[e]], 4))) for e in elements}
 
 
+def _max_stage_points(args) -> int:
+    """Largest number of fits any stage runs in parallel. Allocations are
+    charged per core: a full 112-core node for ~30 short fits was ~1-3 %
+    utilized on Cu-Zr (77.7 CPU-hours charged, 1.3 used)."""
+    def n(key, default_len):
+        v = getattr(args, key, None)
+        return len(v) if v else default_len
+
+    solvers = len(getattr(args, "four_body_solvers", None) or [1])
+    return max(n("orders_2b", len(DEFAULTS["orders_2b"])) * n("s_maxim_2b", 5),
+               n("orders_3b", len(DEFAULTS["orders_3b"])) * n("s_maxim_3b", 3),
+               n("orders_4b", len(DEFAULTS["orders_4b"])) * n("s_maxim_4b", 2) * solvers, 4)
+
+
 def _submit(args, out: Path) -> dict:
     from .. import hpc, machines
 
@@ -146,17 +174,18 @@ def _submit(args, out: Path) -> dict:
                if not k.startswith("_") and k not in ("machine", "json_in", "json_out", "describe", "force", "dry_run",
                                                       "output_dir", "stage", "queue", "walltime_hours")}
     profile = machines.load_profile(args.machine)
-    payload["workers"] = profile.default_ntasks_per_node or payload.get("workers", 4)
+    cores = getattr(args, "cores", None) or min(profile.default_ntasks_per_node or 112, _max_stage_points(args))
+    payload["workers"] = cores
     inp = out / "hyper_search_input.json"
     inp.write_text(json.dumps(payload, indent=1, default=str))
     run_dir = out / "search"
-    cmd = f"{sys.executable} -m agentic_chimes.cli hyper-search --json-in {inp} --output-dir {run_dir} > hyper_search.out 2>&1"
+    cmd = f"{sys.executable} -m agentic_chimes.cli hyper-search --json-in {inp} --output-dir {run_dir} --force > hyper_search.out 2>&1"
     handle = hpc.submit_job(profile, job_name="hyper-search", commands=[f"cd {out.resolve()}", cmd], work_dir=out,
-                            nodes=1, walltime_hours=getattr(args, "walltime_hours", 4.0) or 4.0,
+                            nodes=1, ntasks_per_node=cores, walltime_hours=getattr(args, "walltime_hours", 4.0) or 4.0,
                             queue=getattr(args, "queue", "batch") or "batch", dry_run=bool(getattr(args, "dry_run", False)))
     return {"submitted": not handle.dry_run, "dry_run": handle.dry_run, "job_id": handle.job_id,
             "job_file": str(handle.job_file), "input": str(inp),
-            "results_when_done": str(run_dir / "hyper_report.json"),
+            "results_when_done": str(run_dir / "hyper_report.json"), "cores_requested": cores,
             "note": "The search runs inside the job; read hyper_report.json when it finishes."}
 
 
@@ -179,12 +208,25 @@ class _Runner:
         return results
 
 
+def _number_density(frames) -> float:
+    import numpy as np
+
+    vals = []
+    for f in frames:
+        cell = np.asarray(f.box if f.non_ortho else np.diag(f.box), dtype=float)
+        vals.append(f.natoms / abs(np.linalg.det(cell)))
+    return float(np.median(vals))
+
+
 def _row(r):
     c = r["cfg"]
     keep = {k: c.get(k) for k in ("order_2b", "order_3b", "order_4b", "s_maxim_2b", "s_maxim_3b", "s_maxim_4b", "lambda_scale")}
+    for k in ("solver", "exclude_3b", "exclude_4b"):
+        if c.get(k):
+            keep[k] = c[k] if k == "solver" else [" ".join(e) for e in c[k]]
     keep.update({k: r.get(k) for k in ("status", "n_params", "params_per_equation", "nlayers", "holdout_relative_force_error",
                                         "holdout_relative_force_se", "holdout_rmse_force", "holdout_rmse_energy_per_atom",
-                                        "train_relative_force_error", "score", "key", "error")})
+                                        "train_relative_force_error", "solver_alpha", "score", "md_cost", "key", "error")})
     sig = r.get("signal") or {}
     for body in ("3b", "4b"):
         if sig.get(f"signal_{body}") is not None:
@@ -229,7 +271,8 @@ def run(args) -> dict:
     objective = getattr(args, "objective", "auto") or "auto"
     if objective == "auto":
         objective = "force+energy" if fitener else "force"
-    min_signal = getattr(args, "min_signal", 1.0e-6)
+    min_signal = getattr(args, "min_signal", 1.0e-9)
+    exclude_inert = bool(getattr(args, "exclude_inert", False))
     energy_weight = getattr(args, "energy_weight", 0.1)
     tol = getattr(args, "tolerance", 0.03)
     min_gain = getattr(args, "min_gain", 0.05)
@@ -252,11 +295,14 @@ def run(args) -> dict:
         "fitener": fitener, "lambda_scale": 1.0,
         "order_3b": 0, "s_maxim_3b": None, "order_4b": 0, "s_maxim_4b": None,
     }
-    n_train = len(xyzf_io.read_xyzf(train))
+    train_frames = xyzf_io.read_xyzf(train)
+    n_train = len(train_frames)
+    density = _number_density(train_frames)
     runner = _Runner(out, {
         "train_xyzf": str(Path(train).resolve()), "holdout_xyzf": str(Path(holdout).resolve()), "n_train": n_train,
         "masses": _masses(elements, getattr(args, "masses", None)), "thinnest": analysis["thinnest_cell_width"],
         "algorithm": getattr(args, "algorithm", "lassolars") or "lassolars", "alpha": getattr(args, "alpha", 1e-5),
+        "timeout_s": getattr(args, "max_fit_seconds", 600),
     }, max(1, getattr(args, "workers", 4) or 1))
 
     inert = []
@@ -266,18 +312,20 @@ def run(args) -> dict:
         for body in ("3b", "4b"):
             if r["cfg"].get(f"order_{body}") and sig.get(f"signal_{body}") is not None and sig[f"signal_{body}"] < min_signal:
                 inert.append((body, r["cfg"].get(f"s_maxim_{body}"), sig[f"signal_{body}"]))
-                return False
+                return not exclude_inert
         return True
 
     def pick(results):
         results = [r for r in results if r.get("status") != "done" or usable(r)]
-        return _hyper.select(results, objective=objective, energy_weight=energy_weight, tolerance=tol, max_param_ratio=max_ratio)
+        return _hyper.select(results, objective=objective, energy_weight=energy_weight, tolerance=tol,
+                             max_param_ratio=max_ratio, density=density)
 
     report_stages, notes = [], []
     current = None
 
     def record(name, results, sel, extra=None):
-        entry = {"stage": name, "n_points": len(results), "n_failed": sum(r["status"] != "done" for r in results),
+        entry = {"stage": name, "n_points": len(results), "n_failed": sum(r["status"] == "failed" for r in results),
+                 "n_timeout": sum(r["status"] == "timeout" for r in results),
                  "chosen": _row(sel["chosen"]) if sel["chosen"] else None, "best": _row(sel["best"]) if sel["best"] else None,
                  "reason": sel["reason"], "table": [_row(r) for r in sorted(results, key=lambda r: r.get("score", 9e9))]}
         if extra:
@@ -323,14 +371,100 @@ def run(args) -> dict:
                                          else f"3-body improved the score by {gain_3b:.1%} < min_gain {min_gain:.0%}")})
     if run_4b:
         c3 = current["cfg"]
-        cfgs = [{**c3, "order_4b": o, "s_maxim_4b": c} for o in grid["orders_4b"] for c in grid["s_maxim_4b"] if c <= c3["s_maxim_3b"]]
-        res = runner.fit(cfgs)
+        base_solver = c3.get("solver", runner.base["algorithm"])
+        solvers = getattr(args, "four_body_solvers", None) or [base_solver]
+
+        def with_solver(cfg, s):
+            return cfg if s == base_solver else {**cfg, "solver": s}
+
+        baselines = [with_solver(c3, s) for s in solvers if s != base_solver]
+        cfgs = [with_solver({**c3, "order_4b": o, "s_maxim_4b": c}, s)
+                for s in solvers for o in grid["orders_4b"] for c in grid["s_maxim_4b"] if c <= c3["s_maxim_3b"]]
+        res = runner.fit(baselines + cfgs)
         sel = pick(res + [current])
-        record("4b", res, sel, {"kept_four_body": bool(sel["chosen"] and sel["chosen"]["cfg"].get("order_4b"))})
-        if sel["chosen"] and sel["chosen"]["cfg"].get("order_4b"):
+        per_solver = {}
+        for s in solvers:
+            base = current if s == base_solver else next((r for r in res if r["cfg"].get("solver") == s and not r["cfg"].get("order_4b")), None)
+            fours = [r for r in res if r.get("status") == "done" and r["cfg"].get("order_4b") and r["cfg"].get("solver", base_solver) == s]
+            if base and base.get("status") == "done" and fours:
+                best4 = min(fours, key=lambda r: _hyper.score(r, objective, energy_weight))
+                per_solver[s] = {"three_body_score": round(_hyper.score(base, objective, energy_weight), 4),
+                                 "best_four_body_score": round(_hyper.score(best4, objective, energy_weight), 4),
+                                 "best_four_body": {k: best4["cfg"].get(k) for k in ("order_4b", "s_maxim_4b")}}
+        kept = bool(sel["chosen"] and sel["chosen"]["cfg"].get("order_4b"))
+        record("4b", res, sel, {"kept_four_body": kept, "solvers": solvers, "four_body_gain_by_solver": per_solver})
+        if sel["chosen"] and (kept or sel["chosen"]["cfg"].get("solver", base_solver) != base_solver):
             current = sel["chosen"]
+        if not kept:
+            notes.append("4b: no 4-body model beat the current model by more than the tie margin with any solver "
+                         f"({', '.join(solvers)}); no 4-body terms")
+        elif current["cfg"].get("solver", base_solver) != base_solver:
+            notes.append(f"4b: the chosen model uses solver {current['cfg']['solver']}; later stages keep it")
+
+    # ---- cluster-type exclusions
+    if "exclude" in stages and (current["cfg"].get("order_3b") or current["cfg"].get("order_4b")):
+        coverage = current.get("cluster_coverage")
+        if not coverage and current.get("point_dir") and (Path(current["point_dir"]) / "fm_setup.log").is_file():
+            coverage = _hyper.cluster_coverage(Path(current["point_dir"]))  # fits cached before coverage was recorded
+        coverage = coverage or {}
+        type_rows = {}
+        for body in ("3b", "4b"):
+            if not current["cfg"].get(f"order_{body}"):
+                continue
+            for t, info in (coverage.get(body) or {}).items():
+                type_rows[(body, t)] = {"body": body, "type": t, "instances": info.get("instances"),
+                                        "min_distances": info.get("min_distances")}
+        rounds = []
+        entry = current  # every round is also judged against the model that entered the stage,
+        # so losses that are each within the tie margin cannot add up across rounds
+        for rnd in range(max(0, getattr(args, "exclude_rounds", 2) or 0)):
+            c = current["cfg"]
+            excluded = {("3b", " ".join(e)) for e in c.get("exclude_3b") or []} | {("4b", " ".join(e)) for e in c.get("exclude_4b") or []}
+            cands, keys = [], []
+            for (body, t) in type_rows:
+                if (body, t) in excluded:
+                    continue
+                key = f"exclude_{body}"
+                cands.append({**c, key: sorted((c.get(key) or []) + [t.split()])})
+                keys.append((body, t))
+            if not cands:
+                break
+            res = runner.fit(cands)
+            pool = res + [current] + ([entry] if entry is not current else [])
+            sel = pick(pool)
+            base_score = current["score"]
+            for (body, t), r in zip(keys, res):
+                if r.get("status") == "done":
+                    s = _hyper.score(r, objective, energy_weight)
+                    type_rows[(body, t)].setdefault("score_change_when_removed", {})[f"round{rnd + 1}"] = round(s - base_score, 4)
+                    type_rows[(body, t)].setdefault("coefficients_saved", current["n_params"] - r["n_params"])
+            rounds.append({"round": rnd + 1, "reason": sel["reason"],
+                           "table": [_row(r) for r in sorted(res, key=lambda r: r.get("score", 9e9))]})
+            if sel["chosen"] is None or sel["chosen"]["key"] in (current["key"], entry["key"]):
+                break
+            current = sel["chosen"]
+        excluded_final = {"3b": current["cfg"].get("exclude_3b") or [], "4b": current["cfg"].get("exclude_4b") or []}
+        for (body, t), row in type_rows.items():
+            row["excluded"] = t.split() in excluded_final[body]
+            if row.get("instances") == 0:
+                row["note"] = "absent from the training data: unconstrained if kept"
+        if current is not entry and entry.get("train_relative_force_error") and current.get("train_relative_force_error"):
+            rise = current["train_relative_force_error"] / entry["train_relative_force_error"] - 1
+            if rise > 0.10:
+                notes.append(f"exclude: training error rose {rise:.0%} with the exclusions "
+                             f"({entry['train_relative_force_error']:.3f} -> {current['train_relative_force_error']:.3f}) while the "
+                             "holdout could not resolve a difference; with a small holdout this is a real but unmeasurable "
+                             "loss -- consider keeping the types, or re-judge with more holdout data")
+        if not type_rows:
+            reason = "no cluster-type data for the current model; exclusions not tested"
+            notes.append("exclude: " + reason)
+        elif any(excluded_final.values()):
+            reason = f"excluded {sum(len(v) for v in excluded_final.values())} cluster type(s)"
         else:
-            notes.append("4b: no 4-body model beat the current model by more than the tolerance; no 4-body terms")
+            reason = "every cluster type is needed (removing any one hurts beyond the tie margin)"
+        report_stages.append({"stage": "exclude", "n_points": sum(len(r["table"]) for r in rounds),
+                              "reason": reason,
+                              "cluster_types": list(type_rows.values()), "rounds": rounds})
 
     # ---- Morse lambda
     if "lambda" in stages:
@@ -365,10 +499,11 @@ def run(args) -> dict:
 
     if inert:
         seen = sorted({(b, c) for b, c, _ in inert})
-        notes.append("numerically inert many-body terms (columns < min_signal of the 2-body scale) at "
+        notes.append("many-body terms with columns below min_signal of the 2-body scale at "
                      + ", ".join(f"{b} cutoff {c}" for b, c in seen)
                      + ": ChIMES' cubic smoothing multiplies one (1 - r/r_c)^3 factor per cluster distance, so these cutoffs "
-                       "barely exceed the neighbour distances. Such points were excluded; try longer many-body cutoffs")
+                       "barely exceed the neighbour distances and the terms need very large coefficients. "
+                       + ("They were excluded." if exclude_inert else "Treat any gain from them with suspicion."))
 
     # ---- final artifacts
     final = current
@@ -384,9 +519,11 @@ def run(args) -> dict:
         "morse_lambda": {p: round(c["morse_lambda"][p] * c.get("lambda_scale", 1.0), 4) for p in c["morse_lambda"]},
         "special_maxim_3b": c.get("s_maxim_3b") if c.get("order_3b") else None,
         "special_maxim_4b": c.get("s_maxim_4b") if c.get("order_4b") else None,
+        "exclude_3b": c.get("exclude_3b") or None,
+        "exclude_4b": c.get("exclude_4b") or None,
         "nlayers": final["nlayers"],
         "fitener": c["fitener"],
-        "algorithm": runner.base["algorithm"], "alpha": runner.base["alpha"],
+        "algorithm": c.get("solver", runner.base["algorithm"]), "alpha": final.get("solver_alpha", runner.base["alpha"]),
         "weights": "default (uniform)",
     }
     (best_dir / "hyper_choice.json").write_text(json.dumps(choice, indent=1))
@@ -416,5 +553,5 @@ def run(args) -> dict:
     path.write_text(json.dumps(report, indent=1, default=str))
     return {"hyper_report": str(path), "params": str(best_dir / "params.txt"), "fm_setup_in": str(best_dir / "fm_setup.in"),
             "hyper_choice": str(best_dir / "hyper_choice.json"), "final": report["final"], "hyperparameters": choice,
-            "stage_summary": [{k: s[k] for k in ("stage", "n_points", "skipped", "reason", "kept_three_body", "kept_four_body") if k in s} for s in report_stages],
+            "stage_summary": [{k: s[k] for k in ("stage", "n_points", "skipped", "reason", "kept_three_body", "kept_four_body", "four_body_gain_by_solver") if k in s} for s in report_stages],
             "notes": report["notes"], "n_fits": report["n_fits"]}

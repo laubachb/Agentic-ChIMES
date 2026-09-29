@@ -59,3 +59,21 @@ def forces_ev_ang(frame: Frame) -> np.ndarray:
 
 def energy_ev(frame: Frame):
     return None if frame.energy is None else units.kcal_per_mol_to_ev(frame.energy)
+
+
+def unique_pairs(atoms, cutoff: float):
+    """(i, j, d) for every distinct atom pair within `cutoff`, counting
+    periodic images, each pair once.
+
+    ASE lists each pair in both directions. For i != j keep i < j. For
+    i == j (an atom and its own periodic image, the *only* neighbours in a
+    1-atom cell) keep the direction whose shift vector is lexicographically
+    positive. Filtering on i < j alone drops every self-image pair, which
+    made 1-atom bulk crystals look like isolated atoms.
+    """
+    from ase.neighborlist import neighbor_list
+
+    i, j, d, S = neighbor_list("ijdS", atoms, cutoff)
+    first_nonzero = np.where(S[:, 0] != 0, S[:, 0], np.where(S[:, 1] != 0, S[:, 1], S[:, 2]))
+    keep = (i < j) | ((i == j) & (first_nonzero > 0))
+    return i[keep], j[keep], d[keep]

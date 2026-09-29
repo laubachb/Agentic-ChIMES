@@ -11,8 +11,14 @@ Sweepable dimensions (any subset; anything not given uses `base`'s value):
     fm_setup_gen's own convention for omitting PAIRTYP's 4-body order)
   - default_s_minim, default_s_maxim (the outer/inner cutoff fm-setup-gen
     falls back to for any pair not given an explicit pair_cutoffs entry)
+  - special_maxim_3b, special_maxim_4b (3-/4-body outer cutoffs; null = same
+    as the 2-body cutoff)
+  - exclude_3b, exclude_4b (cluster types to drop, each grid value a list of
+    element lists, e.g. [[], [["Zr","Zr","Zr"]]]; see hyper-search's exclude
+    stage for an automatic version)
   - alpha (solve's regularization strength)
-  - algorithm (solve's algorithm choice)
+  - algorithm (solve's algorithm choice, e.g. lassolars vs blocklasso when
+    4-body terms are present)
 
 Grid points run sequentially (no parallelism in this phase), each into its
 own `point_NNNN/` subdirectory under --output-dir, calling
@@ -35,7 +41,8 @@ from ._compose import ns
 NAME = "sweep"
 SUMMARY = "Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm; reports a comparison table (not auto-tuning)."
 
-GRID_KEYS = ["order_2b", "order_3b", "order_4b", "default_s_minim", "default_s_maxim", "alpha", "algorithm"]
+GRID_KEYS = ["order_2b", "order_3b", "order_4b", "default_s_minim", "default_s_maxim", "special_maxim_3b",
+             "special_maxim_4b", "exclude_3b", "exclude_4b", "alpha", "algorithm"]
 
 SCHEMA = {
     "type": "object",
@@ -47,7 +54,7 @@ SCHEMA = {
         },
         "grid": {
             "type": "object",
-            "description": "Any subset of: order_2b, order_3b, order_4b, default_s_minim, default_s_maxim, alpha, algorithm -- each a list of values to sweep. Cartesian product across all given keys.",
+            "description": "Any subset of: order_2b, order_3b, order_4b, default_s_minim, default_s_maxim, special_maxim_3b, special_maxim_4b, exclude_3b, exclude_4b, alpha, algorithm -- each a list of values to sweep. Cartesian product across all given keys.",
         },
         "holdout_xyzf": {"type": "string"},
     },
@@ -61,7 +68,7 @@ def add_arguments(parser) -> None:
 
 
 def _grid_points(grid: dict):
-    keys = [k for k in GRID_KEYS if grid.get(k)]
+    keys = [k for k in GRID_KEYS if grid.get(k) is not None and len(grid.get(k)) > 0]
     if not keys:
         yield {}
         return
@@ -103,10 +110,10 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
         fitpovr=base.get("fitpovr", False),
         chbtype=base.get("chbtype", "MORSE"),
         fcuttyp=base.get("fcuttyp", "CUBIC"),
-        exclude_3b=base.get("exclude_3b"),
-        exclude_4b=base.get("exclude_4b"),
-        special_maxim_3b=base.get("special_maxim_3b"),
-        special_maxim_4b=base.get("special_maxim_4b"),
+        exclude_3b=overrides.get("exclude_3b", base.get("exclude_3b")) or None,
+        exclude_4b=overrides.get("exclude_4b", base.get("exclude_4b")) or None,
+        special_maxim_3b=overrides.get("special_maxim_3b", base.get("special_maxim_3b")),
+        special_maxim_4b=overrides.get("special_maxim_4b", base.get("special_maxim_4b")),
         special_blocks=base.get("special_blocks"),
         cheby_range=base.get("cheby_range", [-1, 1]),
         output_dir=str(point_dir),
@@ -138,18 +145,20 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
     return {
         "params": mb_result["params"],
         "rmse_force_kcal_mol_ang": ev_result["results"][0]["rmse_force_kcal_mol_ang"],
+        "relative_force_error": ev_result["results"][0]["relative_force_error"],
         "rmse_energy_kcal_mol": ev_result["results"][0]["rmse_energy_kcal_mol"],
     }
 
 
 def _write_csv(path: Path, results: list) -> None:
-    fieldnames = ["index", "status"] + GRID_KEYS + ["rmse_force_kcal_mol_ang", "rmse_energy_kcal_mol", "wall_time_s", "params", "error"]
+    fieldnames = ["index", "status"] + GRID_KEYS + ["rmse_force_kcal_mol_ang", "relative_force_error", "rmse_energy_kcal_mol", "wall_time_s", "params", "error"]
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for r in results:
-            row = {"index": r["index"], "status": r["status"], **r.get("overrides", {})}
-            row.update({k: r.get(k) for k in ("rmse_force_kcal_mol_ang", "rmse_energy_kcal_mol", "wall_time_s", "params", "error")})
+            row = {"index": r["index"], "status": r["status"],
+                   **{k: (json.dumps(v) if isinstance(v, list) else v) for k, v in r.get("overrides", {}).items()}}
+            row.update({k: r.get(k) for k in ("rmse_force_kcal_mol_ang", "relative_force_error", "rmse_energy_kcal_mol", "wall_time_s", "params", "error")})
             writer.writerow(row)
 
 

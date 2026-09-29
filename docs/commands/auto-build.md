@@ -130,6 +130,14 @@ different HPC settings for each.
 
 ## Known limitations
 
+- Model choice uses `evaluate`'s holdout force RMSE, which mixed units until it was fixed (see
+  `docs/commands/evaluate.md`). Any `auto-build` result produced before the fix picked its
+  winner on an invalid metric; rerun it.
+- The order sweep runs at fixed first-shell many-body cutoffs with `lassolars` at α = 1e-5
+  (un-normalized columns). Measurements show both can leave 3-/4-body terms with little
+  effect; [`hyper-search`](hyper-search.md) searches those cutoffs and is where this is being
+  addressed.
+
 - Orthorhombic training boxes only (`io/rdf.py`'s scope, same as
   `io/lammps_data.py`).
 - The 3-/4-body outer cutoff is one global value across all pairs (the

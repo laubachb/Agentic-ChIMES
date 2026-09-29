@@ -351,3 +351,19 @@ def test_qe_collect_writes_mergeable_provenance(tmp_path):
                                        holdout_fraction=None, energy_outlier_mad=None, dedupe=False,
                                        max_volume_ratio=None))
     assert res["n_frames"] == 4 and res["level_of_theory"][0].startswith("DFT-QE")
+
+
+def test_one_atom_crystal_is_not_an_isolated_atom(tmp_path):
+    """In a 1-atom cell every neighbour is a periodic image of the atom
+    itself; they must count (they were once dropped, so primitive elemental
+    crystals from MatPES were removed as 'isolated atoms')."""
+    from agentic_chimes.data_sources.convert import unique_pairs
+
+    prim = bulk("Cu", "fcc", a=3.61)  # 1 atom, nearest neighbours 2.553 A
+    i, j, d = unique_pairs(prim, 3.0)
+    assert len(d) == 6 and np.allclose(d, 3.61 / np.sqrt(2))  # 12 neighbours, each pair once
+    a = _with_label(prim.copy(), -3.7, np.zeros((1, 3)))
+    pool = _pool(tmp_path, "one", [a] + _labeled_atoms(6, np.random.default_rng(3)))
+    res = data_curate.run(_curate_args([pool], tmp_path / "o", elements=["Cu", "Au"], holdout_fraction=None,
+                                       max_volume_ratio=None, energy_outlier_mad=None))
+    assert "isolated_atom" not in res["removed_by_reason"] and res["n_frames"] == 7
