@@ -71,51 +71,35 @@ def test_evaluate_matches_published_reference():
     assert fz[0] == pytest.approx(EXPECTED_FORCE_ATOM0[2], abs=1e-3)
 
 
-@pytest.mark.skipif(not _chimescalc_lib_available(), reason="chimes_calculator not built; run `chimes-agent setup --component chimes_calculator --machine <name>`")
-def test_evaluate_stage_rmse_self_consistent():
-    """A holdout .xyzf built from the model's own predictions must score
-    ~zero RMSE against itself -- exercises stages.evaluate.run end to end
-    (not just the wrapper) via a synthetic self-consistent .xyzf."""
-    from agentic_chimes.io import xyzf as xyzf_io
+@pytest.mark.skipif(not _chimescalc_lib_available(), reason="chimes_calculator not built")
+def test_evaluate_converts_reference_forces_from_hartree_per_bohr(tmp_path):
+    """Reference forces in a training .xyzf are hartree/bohr (ChIMES
+    doc/source/units.rst); predictions are kcal/mol/A. Feeding the model's
+    own predictions back as references (converted to H/B) must give zero
+    error. evaluate once subtracted the two unconverted, so its "RMSE" was
+    really the size of the predicted forces."""
+    from types import SimpleNamespace
+
+    from agentic_chimes.converters import units
+    from agentic_chimes.io import xyzf
 
     natoms, (cell_a, cell_b, cell_c), symbols, positions = _read_plain_xyz(CONFIG_XYZ)
     wrapper = ev._load_wrapper()
     ptr = wrapper.chimes_open_instance()
     wrapper.set_chimes_instance(ptr, small=False)
     wrapper.init_chimes_instance(ptr, str(PARAMS_TXT), 0)
-    try:
-        xcrd = [p[0] for p in positions]
-        ycrd = [p[1] for p in positions]
-        zcrd = [p[2] for p in positions]
-        fx0, fy0, fz0, stress0 = [0.0] * natoms, [0.0] * natoms, [0.0] * natoms, [0.0] * 9
-        fx, fy, fz, _stress, energy = wrapper.calculate_chimes_instance(
-            ptr, natoms, xcrd, ycrd, zcrd, symbols, cell_a, cell_b, cell_c, 0.0, fx0, fy0, fz0, stress0
-        )
-    finally:
-        wrapper.chimes_close_instance(ptr)
+    fx, fy, fz, _s, energy = wrapper.calculate_chimes_instance(
+        ptr, natoms, [p[0] for p in positions], [p[1] for p in positions], [p[2] for p in positions], symbols,
+        list(cell_a), list(cell_b), list(cell_c), 0.0, [0.0] * natoms, [0.0] * natoms, [0.0] * natoms, [0.0] * 9)
+    wrapper.chimes_close_instance(ptr)
+    to_hb = 1.0 / units.HARTREE_PER_BOHR_TO_KCAL_PER_MOL_ANG
+    frame = xyzf.Frame(symbols=symbols, positions=positions,
+                       forces=[[fx[i] * to_hb, fy[i] * to_hb, fz[i] * to_hb] for i in range(natoms)],
+                       box=[cell_a[0], cell_b[1], cell_c[2]], energy=energy)
+    path = tmp_path / "self.xyzf"
+    xyzf.write_xyzf([frame], path)
 
-    frame = xyzf_io.Frame(
-        symbols=symbols,
-        positions=positions,
-        forces=list(zip(fx, fy, fz)),
-        box=[cell_a[0], cell_b[1], cell_c[2]],
-        energy=energy,
-    )
-
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.TemporaryDirectory() as td:
-        holdout_path = Path(td) / "self.xyzf"
-        xyzf_io.write_xyzf([frame], holdout_path)
-
-        class Args:
-            params = [str(PARAMS_TXT)]
-            holdout_xyzf = str(holdout_path)
-            max_frames = None
-
-        result = ev.run(Args())
-
-    assert result["n_frames"] == 1
-    assert result["results"][0]["rmse_force_kcal_mol_ang"] < 1e-6
-    assert result["results"][0]["rmse_energy_kcal_mol"] < 1e-6
+    res = ev.run(SimpleNamespace(params=[str(PARAMS_TXT)], holdout_xyzf=str(path), max_frames=None))["results"][0]
+    assert res["rmse_force_kcal_mol_ang"] < 1e-4
+    assert res["rmse_energy_kcal_mol"] < 1e-4
+    assert res["relative_force_error"] < 1e-5

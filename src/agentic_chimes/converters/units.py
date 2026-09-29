@@ -53,3 +53,12 @@ def ry_to_kcal_per_mol(x):
 
 def ry_per_bohr_to_hartree_per_bohr(x):
     return x * RY_TO_HARTREE
+
+
+HARTREE_PER_BOHR_TO_KCAL_PER_MOL_ANG = HARTREE_PER_BOHR_TO_EV_PER_ANG * EV_TO_KCAL_PER_MOL
+
+
+def hartree_per_bohr_to_kcal_per_mol_ang(x):
+    """Training .xyzf forces (H/B, per ChIMES doc/source/units.rst) -> the
+    kcal/mol/A that chimes_calculator predicts and force.txt reports."""
+    return x * HARTREE_PER_BOHR_TO_KCAL_PER_MOL_ANG

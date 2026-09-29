@@ -94,33 +94,11 @@ def _predicted_energies_normed(frames, params_path) -> list:
     wrapper.set_chimes_instance(ptr, small=False)
     wrapper.init_chimes_instance(ptr, params_path, 0)
 
+    cutoff = evaluate_stage.max_outer_cutoff(params_path)
     energies = []
     try:
         for frame in frames:
-            cell_a, cell_b, cell_c = evaluate_stage._cell_vectors(frame)
-            xcrd = [p[0] for p in frame.positions]
-            ycrd = [p[1] for p in frame.positions]
-            zcrd = [p[2] for p in frame.positions]
-            fx0 = [0.0] * frame.natoms
-            fy0 = [0.0] * frame.natoms
-            fz0 = [0.0] * frame.natoms
-            stress0 = [0.0] * 9
-            _fx, _fy, _fz, _stress, energy = wrapper.calculate_chimes_instance(
-                ptr,
-                frame.natoms,
-                xcrd,
-                ycrd,
-                zcrd,
-                frame.symbols,
-                cell_a,
-                cell_b,
-                cell_c,
-                0.0,
-                fx0,
-                fy0,
-                fz0,
-                stress0,
-            )
+            energy, _forces = evaluate_stage.predict(wrapper, ptr, frame, cutoff)
             energies.append(energy / frame.natoms)
     finally:
         wrapper.chimes_close_instance(ptr)

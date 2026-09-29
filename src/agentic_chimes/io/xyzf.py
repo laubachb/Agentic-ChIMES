@@ -55,6 +55,8 @@ def read_xyzf(path) -> list:
             nums = [float(x) for x in comment[1:]]
             box = [nums[0:3], nums[3:6], nums[6:9]]
             rest = nums[9:]
+            if all(box[r][c] == 0.0 for r in range(3) for c in range(3) if r != c):
+                box, non_ortho = [box[0][0], box[1][1], box[2][2]], False
         else:
             nums = [float(x) for x in comment]
             box = nums[0:3]
@@ -93,12 +95,19 @@ def read_xyzf(path) -> list:
 
 
 def write_xyzf(frames: list, path) -> None:
+    """If any frame is triclinic, every frame is written as NON_ORTHO
+    (orthorhombic ones with zero off-diagonals). chimes_lsq segfaults when a
+    plain `Lx Ly Lz` frame follows a NON_ORTHO one in the same trajectory;
+    it accepts diagonal NON_ORTHO cells and treats them as orthorhombic."""
+    all_non_ortho = any(fr.non_ortho for fr in frames)
     lines = []
     for fr in frames:
         lines.append(str(fr.natoms))
         if fr.non_ortho:
-            box_tokens = [str(x) for row in fr.box for x in row]
-            comment = ["NON_ORTHO"] + box_tokens
+            comment = ["NON_ORTHO"] + [str(x) for row in fr.box for x in row]
+        elif all_non_ortho:
+            lx, ly, lz = fr.box
+            comment = ["NON_ORTHO"] + [str(x) for x in (lx, 0.0, 0.0, 0.0, ly, 0.0, 0.0, 0.0, lz)]
         else:
             comment = [str(x) for x in fr.box]
         if fr.stress is not None:

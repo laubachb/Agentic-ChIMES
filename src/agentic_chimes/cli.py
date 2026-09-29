@@ -33,6 +33,8 @@ STAGE_MODULE_NAMES = [
     "data_curate",
     "dataset_select",
     "qe_relabel",
+    "hyper_analyze",
+    "hyper_search",
     "fm_setup_gen",
     "amat_build",
     "solve",
