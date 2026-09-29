@@ -103,3 +103,4 @@ def test_evaluate_converts_reference_forces_from_hartree_per_bohr(tmp_path):
     assert res["rmse_force_kcal_mol_ang"] < 1e-4
     assert res["rmse_energy_kcal_mol"] < 1e-4
     assert res["relative_force_error"] < 1e-5
+    assert res["reduced_force_rmse"] < 1e-5

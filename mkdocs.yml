@@ -105,6 +105,9 @@ nav:
       - concepts/machine_profiles.md
       - concepts/vendored_forks.md
       - concepts/qm_driver_plugins.md
+      - concepts/literature.md
+  - Development:
+      - development/assessment.md
   - Stage-by-stage tutorial: tutorials/end_to_end_holdout_study.md
 
 extra:

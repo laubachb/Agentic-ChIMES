@@ -156,6 +156,11 @@ Reference for each: [docs/commands/](docs/commands/index.md).
 - Not yet agents: MD candidate generation and active-learning orchestration
   (the `chimes-active-learning` skill and `al-run` cover it by hand).
 
+Known gaps, bugs and the roadmap:
+[docs/development/assessment.md](docs/development/assessment.md). The
+methodology the agents follow, with citations:
+[docs/concepts/literature.md](docs/concepts/literature.md).
+
 ## Development
 
 ```bash

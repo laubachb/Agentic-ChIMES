@@ -36,7 +36,16 @@ notable:
 6. **Units and scale.** Force RMSE is kcal/mol/Angstrom, energy kcal/mol. A
    force RMSE that is a large fraction of the force standard deviation means
    the model has learned little. Energy error should be judged per atom.
-7. **Fit flags.** `fitener` / `fitstrs` match what the user cares about
+7. **Against the literature** (`.claude/skills/chimes-literature/SKILL.md`,
+   "Accuracy and cost benchmarks", "Validation", "Smoothing function").
+   Compare with published models only via `reduced_force_rmse`: molten C
+   0.44 (2017) → 0.28 (2024), water 0.24-0.31. `relative_force_error` uses a
+   different denominator and reads lower. Has the model been checked in MD
+   (stability, RDF vs DFT)? For water, holdout error alone picked overfit
+   models (Lindsey 2019). Do many-body terms use CUBIC smoothing where the
+   literature uses TERSOFF? Before active learning, is the basis too lean
+   (Lindsey 2025 recommends erring toward complexity)?
+8. **Fit flags.** `fitener` / `fitstrs` match what the user cares about
    (energy-only vs force-only training changes what RMSE means).
 
 Report, in this order, in under 250 words:
@@ -44,7 +53,8 @@ Report, in this order, in under 250 words:
 - **Verdict:** trustworthy / usable with caveats / do not use — one line.
 - **Findings:** numbered, most serious first, each with the evidence
   (file and value).
-- **Next experiment:** the single most informative thing to try.
+- **Next experiment:** the single most informative thing to try (cite the
+  paper when the suggestion comes from the literature).
 
 Say plainly when the evidence provided cannot support a verdict. Do not
 soften real problems.

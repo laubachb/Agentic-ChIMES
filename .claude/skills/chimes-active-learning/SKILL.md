@@ -48,6 +48,33 @@ test is `codes/al_driver-LLfork/examples/simple_iter_single_statepoint-lmp-test/
   waiting to `chimes-job-monitor`. Stop with `al-run --stop <pid>` only when
   asked.
 
+## What the literature says (see `chimes-literature`)
+
+- al_driver's selector is Lindsey et al., JCP 153, 134117 (2020). MD frames
+  are split into molecule-like clusters, and a Monte Carlo search flattens
+  the histogram of ChIMES cluster energies. Memory mode matters little;
+  partial memory with ~40 bins worked best and converged in about 8 ALCs.
+- Carbon 2.0 (Lindsey 2025) and the hierarchical C/N work (Lindsey 2026)
+  ran MD at many state points in parallel. Per state point they took up to
+  20 frames with **close contacts** (r just above s_minim) plus up to 20
+  others. Close-contact frames are what fix MD instabilities.
+- **Weight decay.** Weight each cycle's new frames by n_cycles / I (I = the
+  cycle index) so early unphysical frames cannot pull the fit away from
+  ground-truth data (Lindsey 2025, 2026). al_driver does not do this
+  unprompted; check `config.py` or weight manually when refitting.
+- Refit after each ALC at the *same* hyperparameters. Once the data is
+  final, a smaller basis may be justified (Lindsey 2025: err complex before
+  AL, prune after).
+- **When to stop.** Published practice is stable MD plus RDF, equation of
+  state and dynamics consistent with DFT. Quantitatively, stop when
+  ChIMES-sampled configurations are indistinguishable from DFT ones by
+  cluster-graph fingerprint (Laubach 2026 JCIM). The fingerprint tool
+  ships in chimes_calculator (`chimesFF/src/FP`) but is not wrapped here.
+- Multi-element systems can reuse fitted single-element blocks and fit only
+  the cross terms (hierarchical transfer learning, Lindsey 2026, npj Comput.
+  Mater. 12, 18). al_driver 2.0 supports this (`src/hierarch.py`); the
+  toolkit does not expose it yet.
+
 ## Choosing
 
 - Want the next batch of frames to label, under your own control: `al-select`.

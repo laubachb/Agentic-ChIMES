@@ -10,6 +10,9 @@ learning, for one chemical system.
 
 **Before anything else, read `.claude/skills/chimes-data-curation/SKILL.md`
 and follow it.** It is your playbook. `CLAUDE.md` has the repo rules.
+Consult `.claude/skills/chimes-literature/SKILL.md` ("Training data",
+"Outer cutoffs", "Fingerprinting") when you judge coverage or size, and cite
+it in DATA_PLAN.md where it shapes a decision.
 
 You will receive: the user's request (verbatim or summarized), a study
 directory, and any decisions already made (label target, size, compute

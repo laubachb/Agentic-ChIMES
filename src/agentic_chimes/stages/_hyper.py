@@ -195,7 +195,7 @@ def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinne
         morse_lambda={p: round(cfg["morse_lambda"][p] * cfg.get("lambda_scale", 1.0), 4) for p in cfg["morse_lambda"]},
         default_s_minim=1.0, default_s_maxim=cfg["s_maxim_2b"], default_morse_lambda=1.5, s_delta=0.01,
         wraptrj=True, nlayers=max(1, nlayers_required(cutoff, thinnest)), fitcoul=False, fitstrs="false",
-        fitener="true" if cfg.get("fitener") else "false", fitpovr=False, chbtype="MORSE", fcuttyp="CUBIC",
+        fitener="true" if cfg.get("fitener") else "false", fitpovr=False, chbtype="MORSE", fcuttyp=cfg.get("fcuttyp", "CUBIC"),
         exclude_3b=cfg.get("exclude_3b") or None, exclude_4b=cfg.get("exclude_4b") or None,
         special_maxim_3b=cfg.get("s_maxim_3b") if cfg.get("order_3b") else None,
         special_maxim_4b=cfg.get("s_maxim_4b") if cfg.get("order_4b") else None,

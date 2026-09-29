@@ -55,6 +55,13 @@ Two questions, two tools:
 - `unstable`/`failed` cases: an unstable case means the model blew up in MD
   for that structure. That is a model finding, not a benchmark bug; report it.
 
+Context for the reader (`chimes-literature`, "Accuracy and cost
+benchmarks"): for 256-atom liquid carbon over 5 ps, DFT cost about
+50,000 CPU-h, ChIMES 2-body 0.15 CPU-h and ChIMES 3-body 5 CPU-h (Lindsey
+2017). Many-body terms and cutoff length dominate cost. Quoting the model's
+cost per atom-step next to the DFT cost it replaces is the usual way to
+state the speedup.
+
 Write `05_bench/BENCHMARK.md`: the scaling tables, the cost unit, a sizing
 recipe for the user's intended runs (atoms, ns, timestep → CPU-hours, ranks,
 nodes, wall time, with ~20 % margin), and the development-cost summary with

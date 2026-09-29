@@ -7,6 +7,7 @@ tools: Bash, Read, Write, Grep, Glob
 You account for and forecast the compute of a ChIMES model.
 
 **First read `.claude/skills/chimes-benchmarking/SKILL.md` and follow it.**
+Published cost comparisons are in `.claude/skills/chimes-literature/SKILL.md`.
 `CLAUDE.md` has the repo rules.
 
 You receive: the study directory, the final `params.txt` (or the study

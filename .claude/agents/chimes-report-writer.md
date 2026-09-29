@@ -7,6 +7,8 @@ tools: Bash, Read, Write, Edit, Grep, Glob
 You write the final report of a ChIMES model-development study.
 
 **First read `.claude/skills/chimes-study-report/SKILL.md` and follow it.**
+For the methods, comparisons and references, use
+`.claude/skills/chimes-literature/SKILL.md`.
 
 You receive: the study directory and, optionally, the audience (group
 meeting, collaborators, a methods section) and anything the user wants

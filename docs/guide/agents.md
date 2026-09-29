@@ -17,7 +17,15 @@ needing your decision comes back through the orchestrator.
 Playbooks (usable directly in the main conversation, too):
 `chimes-study`, `chimes-data-curation`, `chimes-hyperparameter-search`,
 `chimes-build-model`, `chimes-auto-build`, `chimes-active-learning`,
-`chimes-hpc-jobs`, `chimes-benchmarking`, `chimes-study-report`.
+`chimes-hpc-jobs`, `chimes-benchmarking`, `chimes-study-report`,
+`chimes-literature`.
+
+**Literature grounding.** `chimes-literature` distills the published ChIMES
+methodology (see [ChIMES literature](../concepts/literature.md)). Every
+agent reads it before recommending cutoffs, smoothing, orders, weights or
+active-learning settings, and cites the papers in its reports. To give the
+agents the full text, put the PDFs in `chimes_papers/` (gitignored) and run
+`tools/index_papers.sh`. You can add your own papers the same way.
 
 Not yet agents (planned): an MD agent (candidate generation, stability
 screening) and an active-learning agent. Their skills and stages already

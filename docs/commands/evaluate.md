@@ -52,6 +52,13 @@ chimes-agent evaluate --params modelA/params.txt --params modelB/params.txt \
 - `relative_force_error` = force RMSE ÷ the RMS of the reference forces. It
   is comparable across datasets; 1.0 means the model predicts nothing
   better than zero force.
+- `reduced_force_rmse` = force RMSE ÷ the mean absolute reference force
+  component: the "reduced RMSE" used throughout the ChIMES literature
+  (0.24-0.31 for water, 0.44 → 0.28 for molten carbon 2017 → 2024; see
+  [literature](../concepts/literature.md)). Use it when comparing with
+  published models. It is larger than `relative_force_error` by a factor that
+  depends on the force distribution (1.48× on the Cu-Zr example, ~1.25× for a
+  Gaussian).
 - `rmse_energy_kcal_mol_per_atom` is the energy error divided by each
   frame's atom count before averaging. Use it when frame sizes differ.
 

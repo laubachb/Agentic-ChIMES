@@ -45,6 +45,7 @@ flags rather than duplicating them, so they don't go stale:
 | `chimes-build-model` | hands-on fitting, choosing cutoffs/orders, sweeps, diagnosing a bad fit |
 | `chimes-hpc-jobs` | anything touching Slurm, QE, DLARS, lustre quota, or a job that seems stuck |
 | `chimes-active-learning` | `al-select`, `al-run`, "improve/stabilize the model with more data" |
+| `chimes-literature` | published ChIMES practice (cutoffs, λ, smoothing, orders, weights, AL, validation, accuracy) with citations; consulted by every agent |
 
 **Subagents:**
 

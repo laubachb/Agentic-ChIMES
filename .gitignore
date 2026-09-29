@@ -32,3 +32,8 @@ site/
 
 # Per-user Claude Code overrides (the shared .claude/settings.json IS committed)
 .claude/settings.local.json
+
+# Local literature for the agents (copyrighted PDFs; never committed). Text is built by
+# tools/index_papers.sh into chimes_papers/text/; the distilled, cited guidance lives in
+# .claude/skills/chimes-literature/SKILL.md, which is tracked.
+chimes_papers/

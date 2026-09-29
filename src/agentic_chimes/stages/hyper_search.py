@@ -76,6 +76,7 @@ SCHEMA = {
         "s_maxim_3b": {"type": ["array", "null"], "items": {"type": "number"}},
         "s_maxim_4b": {"type": ["array", "null"], "items": {"type": "number"}},
         "lambda_scales": {"type": "array", "items": {"type": "number"}, "default": DEFAULTS["lambda_scales"]},
+        "smoothing": {"type": "string", "default": "CUBIC", "description": "fm_setup.in FCUTTYP for every fit: CUBIC (chimes_lsq default) or 'TERSOFF <f_O>' with 0 < f_O < 1. The cubic form multiplies one smoothing factor per cluster distance and shrinks 3-/4-body terms; published many-body ChIMES models use TERSOFF 0.5-0.75 (Lindsey et al., JCP 153, 134117, 2020). Changing it refits every point."},
         "objective": {"type": "string", "enum": ["auto", "force", "force+energy"], "default": "auto", "description": "auto = force+energy when energies are fitted, else force."},
         "energy_weight": {"type": "number", "default": 0.1, "description": "Score per kcal/mol/atom of energy RMSE, for objective force+energy."},
         "tolerance": {"type": "number", "default": 0.03, "description": "Accept a cheaper model scoring within this fraction of the best, or within one bootstrap standard error of it if that is larger."},
@@ -122,6 +123,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--s-maxim-3b", dest="s_maxim_3b", type=_floats, default=None)
     parser.add_argument("--s-maxim-4b", dest="s_maxim_4b", type=_floats, default=None)
     parser.add_argument("--lambda-scales", dest="lambda_scales", type=_floats, default=None)
+    parser.add_argument("--smoothing", default="CUBIC", help="CUBIC or 'TERSOFF <f_O>'")
     parser.add_argument("--objective", choices=["auto", "force", "force+energy"], default="auto")
     parser.add_argument("--energy-weight", dest="energy_weight", type=float, default=0.1)
     parser.add_argument("--tolerance", type=float, default=0.03)
@@ -139,6 +141,22 @@ def add_arguments(parser) -> None:
     parser.add_argument("--queue", default="batch")
     parser.add_argument("--walltime-hours", dest="walltime_hours", type=float, default=4.0)
     parser.add_argument("--cores", type=int, default=None)
+
+
+def _smoothing(value) -> str:
+    """Normalize and validate an FCUTTYP value: CUBIC or 'TERSOFF <f_O>'."""
+    parts = str(value or "CUBIC").split()
+    kind = parts[0].upper()
+    if kind == "CUBIC" and len(parts) == 1:
+        return "CUBIC"
+    if kind == "TERSOFF" and len(parts) == 2:
+        try:
+            f_o = float(parts[1])
+        except ValueError:
+            f_o = -1.0
+        if 0.0 < f_o < 1.0:
+            return f"TERSOFF {f_o:g}"
+    raise ValueError(f"smoothing must be CUBIC or 'TERSOFF <f_O>' with 0 < f_O < 1, got {value!r}")
 
 
 def _get(args, key):
@@ -288,6 +306,7 @@ def run(args) -> dict:
     stages = _get(args, "stages")
     four_body = getattr(args, "four_body", "auto") or "auto"
 
+    smoothing = _smoothing(getattr(args, "smoothing", None))
     base_cfg = {
         "elements": elements,
         "s_minim": {p: v["suggested"]["s_minim"] for p, v in analysis["pairs"].items()},
@@ -295,6 +314,8 @@ def run(args) -> dict:
         "fitener": fitener, "lambda_scale": 1.0,
         "order_3b": 0, "s_maxim_3b": None, "order_4b": 0, "s_maxim_4b": None,
     }
+    if smoothing != "CUBIC":  # only non-default values enter the cache key, so CUBIC caches stay valid
+        base_cfg["fcuttyp"] = smoothing
     train_frames = xyzf_io.read_xyzf(train)
     n_train = len(train_frames)
     density = _number_density(train_frames)
@@ -522,6 +543,7 @@ def run(args) -> dict:
         "exclude_3b": c.get("exclude_3b") or None,
         "exclude_4b": c.get("exclude_4b") or None,
         "nlayers": final["nlayers"],
+        "fcuttyp": c.get("fcuttyp", "CUBIC"),
         "fitener": c["fitener"],
         "algorithm": c.get("solver", runner.base["algorithm"]), "alpha": final.get("solver_alpha", runner.base["alpha"]),
         "weights": "default (uniform)",
@@ -534,6 +556,10 @@ def run(args) -> dict:
     if final["holdout_relative_force_error"] > 0.3:
         notes.append(f"final relative force error {final['holdout_relative_force_error']:.2f} is high: the data (coverage, size, "
                      "consistency) is more likely the limit than these hyperparameters")
+    if smoothing == "CUBIC" and any(s in stages for s in ("3b", "4b")):
+        notes.append("many-body terms were fitted with CUBIC smoothing, which shrinks 3-/4-body contributions; published "
+                     "many-body ChIMES models use TERSOFF 0.5-0.75 (Lindsey et al. 2020). A 'no gain' from 3-/4-body terms "
+                     "may reflect the smoothing; consider re-running those stages with --smoothing 'TERSOFF 0.5'")
     if analysis["n_frames"] < 200:
         notes.append(f"only {analysis['n_frames']} training frames and a small holdout: differences of a few percent between "
                      "points are within noise, which is why the tolerance favours smaller models")

@@ -80,6 +80,30 @@ Write `01_data/DATA_PLAN.md` before fetching anything:
 - After `qe-relabel --collect`, run `data-curate` on the `labeled.xyzf`
   (its `provenance.json` carries the settings), with `--holdout-fraction`.
 
+### What the literature adds (see `chimes-literature`)
+
+- Published base sets are decorrelated DFT-MD frames at the target state
+  points (26 × 256-atom frames converged liquid carbon; C/N used 10 MD runs ×
+  20 frames plus pressurized relaxations). Relaxation trajectories and tiny
+  open-database cells are a weaker substitute. When open data is only
+  relaxations, say so and plan short DFT-MD (or AL) for the missing
+  liquid/high-T coverage.
+- Close contacts decide MD stability. Frames that sample the repulsive wall
+  are deliberately harvested in published AL (Lindsey 2025). Keep them in
+  curation; do not filter them out as outliers unless they are unphysical.
+- Long cutoffs need larger cells. Water added a few 768-atom frames so a
+  9.86 Å cutoff was legal (Lindsey 2019). If the target cutoffs exceed half
+  the cell width, prefer adding a few large cells over a high `N_LAYERS`.
+- Stresses: force-only data does not constrain pressure or density. If the
+  model is for NpT or equation-of-state work, prefer sources with stresses
+  (QE relabel provides them).
+- Coverage can be checked quantitatively with cluster-graph fingerprints
+  (Laubach 2026 JCIM: Mahalanobis D² between datasets). This is not wrapped
+  yet; mention it as an option for single-element systems.
+- Multi-fidelity: cheap DFTB exploration followed by DFT relabeling of the
+  selected set is published practice (Lindsey 2025) when DFT-MD is too
+  expensive.
+
 ## 5. Review before handing off
 
 Read the `data-curate` result, not just its exit status:

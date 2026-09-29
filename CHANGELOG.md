@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased — benchmark and report agents; user-facing documentation
+## Unreleased — literature grounding and assessment
+
+- **ChIMES literature integrated.** The `chimes-literature` skill distills
+  8 ChIMES papers into decision guidance with citations: cutoffs, λ,
+  smoothing, orders, weights, active learning, validation and published
+  accuracy. Every agent and playbook points to it, and `CLAUDE.md` asks
+  agents to cite it. `tools/index_papers.sh` builds a searchable text index
+  of a local, gitignored `chimes_papers/` folder. New page:
+  `docs/concepts/literature.md`.
+- **`evaluate` reports `reduced_force_rmse`** (RMSE ÷ mean |F_ref|), the
+  literature's "reduced RMSE". Compare with published models using this
+  number, not `relative_force_error` (÷ RMS force, which is 1.48× lower on
+  Cu-Zr).
+- **`hyper-search --smoothing`**: CUBIC (default) or `'TERSOFF <f_O>'` for
+  every fit. With CUBIC, the report notes that many-body terms may be
+  suppressed.
+- **Assessment**: `docs/development/assessment.md`, which covers bugs, gaps,
+  quality-of-life improvements and a roadmap for general users.
+- `chimes_papers/` is gitignored and was removed from the index; the local
+  files are kept.
+
+## Benchmark and report agents; user-facing documentation
 
 - **Studies**: `study` stage (`--init` standard layout + `study.json`
   registry, `--register key=path`, status). A study directory switches on

@@ -46,6 +46,8 @@ Load the matching skill before starting that kind of task:
 - `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
 - `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
 - `chimes-active-learning` — `al-select` / `al-run` / stabilizing a model
+- `chimes-literature` — published ChIMES methodology (cutoffs, λ, smoothing,
+  orders, weights, AL, validation, accuracy benchmarks) with citations
 
 Subagents: `chimes-data-curator` (the data phase: plan → search → fetch/
 generate → curate → `data_manifest.json`; returns decisions it cannot make),
@@ -56,6 +58,16 @@ recipe), `chimes-report-writer` (collates the study into `REPORT.md`),
 `chimes-job-monitor` (cheap Slurm/log status checks — delegate
 waiting-and-checking to it) and `chimes-fit-reviewer` (independent read of a
 finished sweep/evaluate result before you recommend a model).
+
+## Ground technical choices in the literature
+
+Before recommending a cutoff, λ, smoothing function, order grid, solver,
+weight or AL setting, check `chimes-literature` and cite the paper (e.g.
+"Lindsey 2019, 10.1021/acs.jctc.8b00831") in your reasoning and write-ups.
+If you deviate from published practice, say so and why. Full text, when
+present, is under `chimes_papers/text/` (gitignored; build with
+`tools/index_papers.sh`). Compare accuracy with papers only via
+`evaluate`'s `reduced_force_rmse`, never `relative_force_error`.
 
 ## Rules that prevent expensive mistakes
 

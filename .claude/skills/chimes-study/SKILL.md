@@ -44,6 +44,18 @@ directory so login-node CPU time is recorded automatically.
 
 An MD agent (candidate generation, stability checks) is planned.
 
+## Literature
+
+`chimes-literature` distills the published ChIMES methodology. Give each
+specialist agent the relevant points in its brief (they are told to read it
+too). Log in `STUDY.md` wherever the study departs from published practice.
+The recurring ones are:
+
+- CUBIC rather than TERSOFF smoothing for many-body terms;
+- no stress data when the model must hold density or pressure;
+- a selection made on holdout error without an MD check;
+- a lean pre-AL basis where the literature errs toward complexity.
+
 ## 1. Plan
 
 From the request, settle and write to `STUDY.md`: elements; what the model
@@ -83,7 +95,9 @@ Read `data_manifest.json`: `train_xyzf`/`holdout_xyzf`, `level_of_theory`,
 `pairs.*.min_distance` (inner cutoffs sit just below these),
 `fit_hints.nlayers_required` (`N_LAYERS` for the outer cutoff you choose),
 `fit_hints.fitener`. Weighting: use the default (uniform) weights until
-custom schemes exist; record that in `STUDY.md`. Note `auto-build` requires
+custom schemes exist; record that in `STUDY.md`. Published
+defaults, for when a scheme is added: forces 1, energies 0.3-5, stresses 100,
+with active-learning frames decayed as n/I (see `chimes-literature`). Note `auto-build` requires
 orthorhombic frames; with triclinic data use the stage-by-stage route.
 Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 

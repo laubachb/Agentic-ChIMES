@@ -79,6 +79,40 @@ analysis and from the user's goal:
   outside the grid), use `sweep` with `exclude_3b` / `special_maxim_4b` grid
   keys.
 
+### What the literature adds (see `chimes-literature` for citations)
+
+- λ at the first RDF peak and s_minim just below the closest sampled contact
+  are published practice (Lindsey 2017, 2019, 2025). Treat them as settled,
+  not searched.
+- Many-body cutoffs: published models use 2-body ≥ 3-body ≥ 4-body, with the
+  2-body cutoff out to the third solvation shell (Lindsey 2025, Carbon 2.0).
+  Per-pair 3-body cutoffs (each pair at its own shell) matched a uniform
+  cutoff at lower cost for water (Lindsey 2019). The search uses one global
+  3-body cutoff; mention per-pair cutoffs as a manual follow-up
+  (`SPECIAL 3B S_MAXIM: SPECIFIC`) when pair shells differ a lot.
+- Smoothing: the search builds with CUBIC smoothing, which shrinks 3-/4-body
+  terms (Lindsey 2020 JCP). Published models with more than 3-body terms use
+  `TERSOFF` with f_O 0.5-0.75. If 3-/4-body terms show "no gain" under
+  CUBIC, say that TERSOFF could change the conclusion before calling the
+  many-body terms unnecessary.
+- **Holdout error alone picked overfit models for water.** The final choice
+  was made by comparing MD with DFT (Lindsey 2019). Put the top two or three
+  tied candidates through a short MD check (stability, RDF) before
+  finalizing, and say in HYPER_REPORT.md whether this was done.
+- **Before active learning, err toward complexity** (Lindsey 2025, Carbon
+  2.0). A sparse initial set makes cross-validation favor bases that are too
+  small; refit smaller once the data set is final. For an ALC-0 model,
+  prefer the richer of two tied candidates unless MD cost forbids it, and say
+  so. The search's default "cheapest tied model" rule suits the final model.
+- Weights: the search fits unweighted rows (energies only if `fitener`), and
+  its `energy_weight` affects only the *score*. Published fitting weights are
+  forces 1, energies 0.3-5, stresses 100 (Lindsey 2020, 2025). `solve
+  --weights` accepts a per-row file, but no stage builds one yet. Stress
+  data is needed when the model must hold density or pressure
+  (Lindsey 2019).
+- Quote accuracy as `reduced_force_rmse` from `evaluate` when comparing
+  with published models (water 0.24-0.31, Carbon 2.0 0.28).
+
 ## 3. Run
 
 - `chimes-agent hyper-search --data-manifest ... --output-dir 02_fit/search

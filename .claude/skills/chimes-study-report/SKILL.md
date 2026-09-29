@@ -43,6 +43,22 @@ addition to the facts: `STUDY.md` (goal, decisions), `01_data/DATA_PLAN.md`,
   note that still applies becomes a caveat. Next steps are concrete
   ("run active learning at 1,200 K", "extend the 2-body grid past 8 Å").
 
+### Literature context
+
+Load `chimes-literature` for the methods and discussion:
+
+- Cite the papers whose practice the study followed (λ at the RDF peak,
+  inner cutoff below the closest contact, al_driver's selector) and name any
+  departures (CUBIC smoothing, no stress data, holdout-only selection).
+- To compare accuracy with published models, use `reduced_force_rmse`
+  (RMSE ÷ mean |F|), the literature's convention, and say which convention
+  every number uses. Never set `relative_force_error` against a published
+  "reduced RMSE".
+- Use the "Validation" section to state which published validation checks
+  were done and which remain (RDF vs DFT, equation of state, diffusion,
+  NpT density).
+- End with a references list: author, journal, year, DOI.
+
 ## Rules
 
 - No number that is not in `REPORT_FACTS.json` or an artifact you can cite.

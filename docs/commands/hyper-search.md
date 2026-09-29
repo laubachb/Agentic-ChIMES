@@ -44,6 +44,17 @@ candidates reach toward the second shell because at the first shell ChIMES'
 cubic smoothing leaves those terms almost no signal. N_LAYERS is set per
 fit from the largest cutoff and the thinnest cell.
 
+**Smoothing.** `--smoothing` sets `FCUTTYP` for every fit. `CUBIC` is the
+default and chimes_lsq's own. The alternative is `'TERSOFF <f_O>'` with
+0 < f_O < 1: it leaves interactions untouched below r_c(1 − f_O) and only
+smooths the outer part. Published models with 3- and 4-body terms use
+TERSOFF with f_O = 0.5 to 0.75 (see [literature](../concepts/literature.md)),
+because cubic smoothing shrinks many-body contributions. When 3-/4-body
+stages run with CUBIC, the report carries a note saying so, since a "no gain"
+result may come from the smoothing rather than the physics. The value is
+part of each point's cache key only when it is not CUBIC, so older CUBIC
+caches stay valid. It is recorded as `fcuttyp` in `hyper_choice.json`.
+
 ## How a point is chosen
 
 - **Score**: holdout force RMSE ÷ holdout reference-force RMS

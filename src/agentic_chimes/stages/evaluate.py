@@ -134,6 +134,7 @@ def run(args) -> dict:
     energy_pa_sqerr = [0.0] * n_models
     frame_rows = [[] for _ in range(n_models)]
     ref_force_sq = 0.0
+    ref_force_abs = 0.0
     ref_force_n = 0
     energy_sqerr = [0.0] * n_models
     energy_n = [0] * n_models
@@ -145,15 +146,17 @@ def run(args) -> dict:
             for mi, ptr in enumerate(instances):
                 energy, pred_forces = predict(wrapper, ptr, frame, cutoffs[mi])
                 # .xyzf forces are hartree/bohr; chimes_calculator returns kcal/mol/A
-                f_err = f_ref = 0.0
+                f_err = f_ref = f_abs = 0.0
                 for (pfx, pfy, pfz), ref in zip(pred_forces, frame.forces):
                     rfx, rfy, rfz = (units.hartree_per_bohr_to_kcal_per_mol_ang(c) for c in ref)
                     f_err += (pfx - rfx) ** 2 + (pfy - rfy) ** 2 + (pfz - rfz) ** 2
                     f_ref += rfx**2 + rfy**2 + rfz**2
+                    f_abs += abs(rfx) + abs(rfy) + abs(rfz)
                 force_sqerr[mi] += f_err
                 force_n[mi] += 3 * frame.natoms
                 frame_rows[mi].append([f_err, f_ref, 3 * frame.natoms])
                 if mi == 0:
+                    ref_force_abs += f_abs
                     ref_force_sq += f_ref
                     ref_force_n += 3 * frame.natoms
                 per_frame_energy[mi].append(energy)
@@ -174,6 +177,10 @@ def run(args) -> dict:
                 "params": params_path,
                 "rmse_force_kcal_mol_ang": rmse_f,
                 "relative_force_error": rmse_f / ref_force_rms if rmse_f is not None and ref_force_rms else None,
+                # the ChIMES papers' "reduced RMSE": RMSE / <|F_DFT|> (mean absolute force component);
+                # larger than relative_force_error (1.25x for Gaussian forces, 1.48x on Cu-Zr). Compare
+                # published values against this one.
+                "reduced_force_rmse": rmse_f / (ref_force_abs / ref_force_n) if rmse_f is not None and ref_force_abs else None,
                 "rmse_energy_kcal_mol": math.sqrt(energy_sqerr[mi] / energy_n[mi]) if energy_n[mi] else None,
                 "rmse_energy_kcal_mol_per_atom": math.sqrt(energy_pa_sqerr[mi] / energy_n[mi]) if energy_n[mi] else None,
             }

@@ -8,7 +8,11 @@ You choose ChIMES hyperparameters (cutoffs, Morse lambdas, polynomial
 orders) for one curated dataset.
 
 **Before anything else, read `.claude/skills/chimes-hyperparameter-search/SKILL.md`
-and follow it.** `CLAUDE.md` has the repo rules.
+and follow it.** `CLAUDE.md` has the repo rules. Also read
+`.claude/skills/chimes-literature/SKILL.md`: it gives the published ChIMES
+practice on cutoffs, λ, smoothing, orders, solver and weights. Cite it when
+you justify a choice, and flag any place the search departs from it (e.g.
+CUBIC vs TERSOFF smoothing, or parsimony before active learning).
 
 You will receive: the path to `data_manifest.json`, the study directory,
 the user's goal and any constraints (MD cutoff/cost limits, compute
@@ -47,7 +51,8 @@ Fit dir: <path>
 Data budget: <frames, equations; largest affordable basis>
 Analysis: <per pair: s_minim, lambda, shell ends; N_LAYERS; data concerns>
 Plan / result: <stages, grids, fits, est. time -- or the chosen settings>
-Evidence: <holdout relative force error +/- SE, E/atom; vs. runner-up; train vs holdout>
+Evidence: <holdout relative force error +/- SE, reduced_force_rmse, E/atom; vs. runner-up; train vs holdout>
+Literature: <where the choice follows or departs from published practice, with citation>
 Notes acted on: <grid edges, overfitting, small-signal terms, timeouts>
 Handoff: <02_fit/search/best/hyper_choice.json, or "not yet">
 Decisions for the user:

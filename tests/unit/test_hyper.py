@@ -204,3 +204,36 @@ def test_cluster_coverage_reads_excluded_types(tmp_path):
     cov = _hyper.cluster_coverage(tmp_path)
     assert cov["3b"]["Cu Cu Cu"]["instances"] == 100
     assert cov["3b"]["Zr Zr Zr"] == {"instances": 0, "excluded": True}
+
+
+def test_hyper_search_smoothing_reaches_every_fit(tmp_path, monkeypatch):
+    frames = _fcc_frames()
+    xyzf_io.write_xyzf(frames, tmp_path / "train.xyzf")
+    xyzf_io.write_xyzf(frames[:3], tmp_path / "holdout.xyzf")
+    seen = []
+
+    def spy(task):
+        seen.append(task["cfg"].get("fcuttyp", "CUBIC"))
+        return _fake_run_point(task)
+
+    monkeypatch.setattr(_hyper, "run_point", spy)
+    monkeypatch.setattr(hyper_search.shutil, "copy", lambda *a, **k: None)
+    args = SimpleNamespace(
+        data_manifest=None, train_xyzf=str(tmp_path / "train.xyzf"), holdout_xyzf=str(tmp_path / "holdout.xyzf"),
+        elements=["Cu"], hyper_analysis=None, stages=["2b", "3b"], four_body="off", orders_2b=[8, 10],
+        orders_3b=[4, 6], orders_4b=None, s_maxim_2b=[5.0], s_maxim_3b=[3.2], s_maxim_4b=None,
+        lambda_scales=[1.0], objective="force", energy_weight=0.1, tolerance=0.03, smoothing="tersoff 0.5",
+        min_gain=0.05, min_signal=1e-9, exclude_inert=False, max_param_ratio=0.5, fitener=False,
+        algorithm="nridgecv", alpha=0.0, masses=None, workers=1, machine=None, max_fit_seconds=60,
+        output_dir=str(tmp_path / "search"))
+    (tmp_path / "search" / "best").mkdir(parents=True)
+    res = hyper_search.run(args)
+    assert seen and set(seen) == {"TERSOFF 0.5"}
+    assert res["hyperparameters"]["fcuttyp"] == "TERSOFF 0.5"
+    report = json.loads((tmp_path / "search" / "hyper_report.json").read_text())
+    assert not any("CUBIC smoothing" in n for n in report["notes"])
+
+    args.smoothing = "TERSOFF 1.5"
+    args.output_dir = str(tmp_path / "bad")
+    with pytest.raises(ValueError):
+        hyper_search.run(args)

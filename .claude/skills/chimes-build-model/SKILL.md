@@ -40,6 +40,17 @@ Always run `<stage> --describe` for exact flags.
   medium bases. `dlars`/`dlasso` are for large bases and need
   `--machine`; load `chimes-hpc-jobs` first.
 
+- **Smoothing (`FCUTTYP`):** CUBIC is the chimes_lsq default and what the
+  toolkit writes. For models with 3-/4-body terms the literature uses
+  `TERSOFF 0.5`-`0.75`, which does not suppress many-body contributions
+  (see `chimes-literature`, "Smoothing function"). Edit the generated
+  `fm_setup.in` to compare the two.
+- **Model selection:** holdout error is necessary but not sufficient.
+  Published model choices were confirmed in MD (water: holdout favored
+  overfit bases). See `chimes-literature` for published orders, weights
+  and accuracy (`evaluate`'s `reduced_force_rmse` is the comparable
+  number).
+
 ## Diagnosing results
 
 - Holdout RMSE much worse than train: overfit. Lower order or raise `alpha`.
