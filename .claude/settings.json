@@ -16,10 +16,15 @@
     ],
     "ask": [
       "Bash(chimes-agent submit *)",
+      "Bash(python3 -m agentic_chimes.cli submit *)",
       "Bash(chimes-agent qe-relabel *)",
+      "Bash(python3 -m agentic_chimes.cli qe-relabel *)",
       "Bash(chimes-agent al-run *)",
+      "Bash(python3 -m agentic_chimes.cli al-run *)",
       "Bash(chimes-agent auto-build *)",
+      "Bash(python3 -m agentic_chimes.cli auto-build *)",
       "Bash(chimes-agent *--machine*)",
+      "Bash(python3 -m agentic_chimes.cli *--machine*)",
       "Bash(scancel *)",
       "Bash(sbatch *)"
     ],
@@ -32,6 +37,19 @@
       "Edit(deps/**)",
       "Write(codes/**)",
       "Write(deps/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/approval_gate.py\""
+          }
+        ]
+      }
     ]
   }
 }

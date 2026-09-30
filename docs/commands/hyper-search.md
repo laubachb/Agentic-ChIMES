@@ -55,6 +55,29 @@ result may come from the smoothing rather than the physics. The value is
 part of each point's cache key only when it is not CUBIC, so older CUBIC
 caches stay valid. It is recorded as `fcuttyp` in `hyper_choice.json`.
 
+**Measured on Cu-Zr (126 MatPES frames), same grids, stages 2b/3b/4b:**
+
+| | CUBIC | TERSOFF 0.5 |
+|---|---|---|
+| 3-body column scale vs 2-body | 0.015-0.044 | 0.16-0.76 |
+| 4-body column scale | 1e-10 to 3e-7 (inert) | 0.001-0.035 |
+| 4-body vs 3-body | identical to 1e-10 | changes the fit, no gain (0.381 vs 0.370) |
+| best 3-body model, relative force error | 0.309 ± 0.071 (8/4, 7.0 Å) | 0.370 ± 0.078 (8/4, 5.2 Å, 2-body 6 Å) |
+| energy error, kcal/mol/atom | 0.85 | 0.67 |
+| 3-body order 6 | tied | overfits (0.47 ± 0.13) |
+
+TERSOFF does make many-body terms real, as the literature says. On this
+small dataset it adds capacity that overfits, and the forces-plus-energy
+score does not favor it. Force errors are tied within the standard error,
+and the comparison is confounded by the 2-body stage choosing 6 Å. The
+earlier "4-body adds nothing" finding therefore reflects the data, not the
+smoothing.
+
+CUBIC stays the default. Use TERSOFF when there is enough data to
+constrain 3-/4-body terms (several hundred diverse frames or more), or
+when energies matter more than forces, and compare the two with
+`md-check`.
+
 ## How a point is chosen
 
 - **Score**: holdout force RMSE ÷ holdout reference-force RMS
@@ -80,6 +103,35 @@ caches stay valid. It is recorded as `fcuttyp` in `hyper_choice.json`.
 - **Runaway builds**: `--max-fit-seconds` (600) abandons a design-matrix
   build (many-body cutoffs on 1-2 Å-wide cells can take very long); the
   point is reported as `timeout`.
+
+## Cheaper or richer (`--prefer`)
+
+- `cheaper` (default) takes the tied point with the lowest estimated MD
+  cost. This is right for a final model.
+- `richer` takes the tied point with the most coefficients (within
+  `max_param_ratio`) and skips the exclusion stage. Use it for a model that
+  will go through active learning. A sparse initial set makes
+  cross-validation favor bases that are too small, so the literature errs
+  toward complexity before active learning and prunes once the data is
+  final (Lindsey et al. 2025, see [literature](../concepts/literature.md)).
+
+## Fitting weights (`--weights-preset`)
+
+Every fit uses the named [weights](weights.md) preset: `uniform` (default),
+`al_driver`, `lindsey2020`, `carbon2_large` or `hierarchical2026`. Weights
+matter only when energies (or stresses) are fitted with the forces. The
+score is still the holdout error, so compare presets with separate
+searches. On Cu-Zr, energy weight 0.3 instead of 1 moved one model's
+relative force error from 0.430 to 0.406 and its energy error from 0.61 to
+0.82 kcal/mol/atom. Like `--smoothing`, a non-default preset enters the
+cache key, and `hyper_choice.json` records it as `weights`.
+
+## Validate the finalists in MD
+
+Holdout error is necessary but not sufficient. For water it favored bases
+that were over-structured or unstable in MD. Before finalizing, run
+[md-check](md-check.md) on the chosen model and its tied runners-up (the
+stage tables list them), at the temperatures that matter.
 
 ## 4-body sweeps are deliberately light
 

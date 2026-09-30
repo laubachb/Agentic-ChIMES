@@ -31,6 +31,7 @@ from ..io import xyzf as xyzf_io
 
 NAME = "qe-relabel"
 SUMMARY = "Submit QE single-point (SCF) labeling jobs; --collect converts finished output to .xyzf."
+SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
     "properties": {

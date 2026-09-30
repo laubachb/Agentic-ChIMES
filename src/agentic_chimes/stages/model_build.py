@@ -18,6 +18,7 @@ from ._compose import ns
 
 NAME = "model-build"
 SUMMARY = "Complete ChIMES model build: amat-build then solve, sequentially."
+SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
     "required": ["fm_setup_in"],
@@ -31,7 +32,8 @@ SCHEMA = {
         },
         "alpha": {"type": "number", "default": 1.0e-4},
         "eps": {"type": "number", "default": 1.0e-5},
-        "weights": {"type": ["string", "null"]},
+        "weights": {"type": ["string", "null"], "description": "Per-row weights file (see the weights stage)."},
+        "weights_preset": {"type": ["string", "null"], "description": "Build weights.dat from this weights-stage preset (uniform, al_driver, lindsey2020, carbon2_large, hierarchical2026) after the A-matrix, when no weights file is given."},
         "folds": {"type": "integer", "default": 4},
         "normalize": {"type": "boolean", "default": False, "description": "dlars/dlasso only."},
         "machine": {"type": ["string", "null"], "description": "If given, both amat-build and a dlars/dlasso solve submit via Slurm."},
@@ -51,6 +53,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--alpha", type=float, default=1.0e-4)
     parser.add_argument("--eps", type=float, default=1.0e-5)
     parser.add_argument("--weights", default=None)
+    parser.add_argument("--weights-preset", dest="weights_preset", default=None)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--normalize", type=lambda s: s.lower() == "true", default=False)
     parser.add_argument("--machine", default=None)
@@ -101,6 +104,15 @@ def run(args) -> dict:
     b = amat_result.get("b") or str(work_dir / "b.txt")
     dim = amat_result.get("dim") or str(work_dir / "dim.txt")
 
+    weights_file = getattr(args, "weights", None)
+    weights_info = None
+    preset = getattr(args, "weights_preset", None)
+    if preset and not weights_file and preset != "uniform":
+        from . import weights as weights_stage
+
+        weights_info = weights_stage.build(work_dir, preset=preset)
+        weights_file = weights_info["weights"]
+
     solve_result = solve.run(
         ns(
             A=A,
@@ -111,7 +123,7 @@ def run(args) -> dict:
             algorithm=algorithm,
             alpha=getattr(args, "alpha", 1.0e-4),
             eps=getattr(args, "eps", 1.0e-5),
-            weights=getattr(args, "weights", None),
+            weights=weights_file,
             folds=getattr(args, "folds", 4),
             normalize=getattr(args, "normalize", False),
             split_files=bool(amat_result.get("split")),
@@ -126,4 +138,7 @@ def run(args) -> dict:
         )
     )
 
-    return {"work_dir": str(work_dir), "amat_build": amat_result, "solve": solve_result, "params": solve_result["params"]}
+    out = {"work_dir": str(work_dir), "amat_build": amat_result, "solve": solve_result, "params": solve_result["params"]}
+    if weights_info:
+        out["weights"] = weights_info
+    return out

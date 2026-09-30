@@ -1,12 +1,7 @@
-"""Sbatch-script preview rendering, usable without any HPC allocation.
-
-This mirrors (but does not literally call) the script-writing half of
-`codes/al_driver-LLfork/src/helpers.py:create_and_launch_job` -- that
-function has no dry-run mode (it always ends in `sbatch <file>`), so a real
-submission always goes through it (see hpc/slurm.py), while `--dry-run`
-previews go through this renderer instead. Keep the flag set here (`-J -N
---ntasks-per-node -t -p -A`) in sync with create_and_launch_job if that
-function's flags ever change.
+"""The one sbatch-script renderer, used for both `--dry-run` previews and
+real submissions (hpc/slurm.py writes this exact text and sbatches it), so
+what the user approves is what runs. Directives follow al_driver's
+`create_and_launch_job` (`-J -N --ntasks-per-node -t -p -A -V -o`).
 
 The one behavior this module exists to guarantee, independent of that
 upstream function: every rendered script carries an explicit
@@ -16,7 +11,10 @@ fall back to the 1-CPU/~2.3GB default of a bare `-N 1`.
 
 from __future__ import annotations
 
+import shlex
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def hours_to_slurm_time(hours: float) -> str:
@@ -85,10 +83,19 @@ def render_sbatch_script(
     for flag in sbatch_flags:
         lines.append(f"{directive} {flag}")
 
+    if not profile.account:
+        raise ValueError(
+            f"machine profile {profile.name!r} has no account: set CHIMES_ACCOUNT (or edit the profile's `account`)"
+        )
+
     if profile.modules:
         lines.append("module load " + " ".join(profile.modules))
     if profile.conda_env:
-        lines.append(f"conda activate {profile.conda_env}")
+        # Guarded: `conda activate` fails in a batch shell where conda was never initialized.
+        env = shlex.quote(profile.conda_env)
+        lines.append(f'if command -v conda >/dev/null 2>&1; then eval "$(conda shell.bash hook)" && conda activate {env}; fi')
+    # Run the interpreter that submitted the job (same packages as the login-node stages).
+    lines.append(f"export PATH={shlex.quote(str(Path(sys.executable).parent))}:$PATH")
 
     lines.extend(commands)
 

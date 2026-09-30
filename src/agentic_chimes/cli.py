@@ -27,6 +27,7 @@ from .stages import _manifest
 
 STAGE_MODULE_NAMES = [
     "setup_cmd",
+    "doctor",
     "study",
     "usage",
     "data_search",
@@ -40,11 +41,13 @@ STAGE_MODULE_NAMES = [
     "fm_setup_gen",
     "amat_build",
     "solve",
+    "weights",
     "model_build",
     "sweep",
     "auto_build",
     "evaluate",
     "lammps_run",
+    "md_check",
     "benchmark",
     "deploy",
     "study_report",
@@ -89,12 +92,41 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _apply_json_in(args: argparse.Namespace) -> None:
+_JSON_TYPES = {"string": str, "number": (int, float), "integer": int, "boolean": bool, "array": list, "object": dict,
+               "null": type(None)}
+
+
+def _json_type_ok(value, name: str) -> bool:
+    if name not in _JSON_TYPES:
+        return True
+    if isinstance(value, bool) and name != "boolean":  # bool is an int subclass in Python
+        return False
+    return isinstance(value, _JSON_TYPES[name])
+
+
+def _apply_json_in(args: argparse.Namespace, schema: dict | None = None) -> None:
+    """Merge a --json-in file into args. Unknown keys (usually typos) and
+    values of the wrong JSON type are refused, so a setting can never be
+    silently ignored."""
     if not getattr(args, "json_in", None):
         return
     with open(args.json_in) as f:
         data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"--json-in {args.json_in}: expected a JSON object, got {type(data).__name__}")
+    props = (schema or {}).get("properties", {})
+    known = {k for k in vars(args) if not k.startswith("_")} | set(props)
+    unknown = sorted(k.replace("-", "_") for k in data if k.replace("-", "_") not in known)
+    if unknown:
+        raise ValueError(f"--json-in {args.json_in}: unknown key(s) {unknown}; valid keys: {sorted(known - {'json_in', 'json_out', 'describe', 'stage'})}")
     for key, value in data.items():
+        key = key.replace("-", "_")
+        declared = props.get(key, {}).get("type")
+        if declared is not None and value is not None:  # null = "use the default", like omitting the key
+            allowed = declared if isinstance(declared, list) else [declared]
+            ok = any(_json_type_ok(value, name) for name in allowed)
+            if not ok:
+                raise ValueError(f"--json-in {args.json_in}: {key!r} must be {' or '.join(allowed)}, got {type(value).__name__} ({value!r})")
         setattr(args, key, value)
 
 
@@ -197,7 +229,15 @@ def main(argv=None) -> int:
         )
         return 0
 
-    _apply_json_in(args)
+    try:
+        _apply_json_in(args, getattr(mod, "SCHEMA", None))
+    except (ValueError, json.JSONDecodeError, OSError) as exc:
+        _emit({"error": str(exc)}, args)
+        return 1
+    if getattr(args, "dry_run", False) and not getattr(mod, "SUPPORTS_DRY_RUN", False):
+        _emit({"error": f"{mod.NAME} has no --dry-run mode (it submits nothing); run it without --dry-run, "
+                        "or use --describe to see its inputs"}, args)
+        return 1
 
     _NON_INPUT_KEYS = ("json_in", "json_out", "describe", "stage", "force", "dry_run", "output_dir")
     input_echo = {k: v for k, v in vars(args).items() if not k.startswith("_") and k not in _NON_INPUT_KEYS}

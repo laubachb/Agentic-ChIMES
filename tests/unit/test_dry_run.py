@@ -2,6 +2,10 @@
 allocation: every rendered script must carry an explicit --ntasks-per-node,
 and the correct account/partition per machine."""
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from agentic_chimes import machines
@@ -47,7 +51,8 @@ def test_render_refuses_missing_ntasks_per_node():
         )
 
 
-def test_stampede3_queue_translation():
+def test_stampede3_queue_translation(monkeypatch):
+    monkeypatch.setenv("CHIMES_ACCOUNT", "TG-ABC123456")
     profile = machines.load_profile("stampede3")
     rendered = dry_run.render_sbatch_script(
         profile,
@@ -59,7 +64,52 @@ def test_stampede3_queue_translation():
         queue="debug",
     )
     assert "-p skx-dev" in rendered.script
-    assert "-A TG-CHM250118" in rendered.script
+    assert "-A TG-ABC123456" in rendered.script
+
+
+def test_profile_without_account_refuses_to_render(monkeypatch):
+    monkeypatch.delenv("CHIMES_ACCOUNT", raising=False)
+    profile = machines.load_profile("stampede3")
+    with pytest.raises(ValueError, match="CHIMES_ACCOUNT"):
+        dry_run.render_sbatch_script(profile, job_name="t", commands=["echo"], nodes=1,
+                                     ntasks_per_node=48, walltime_hours=1, queue="debug")
+
+
+def test_profile_env_expansion_with_default(monkeypatch):
+    monkeypatch.delenv("CHIMES_ACCOUNT", raising=False)
+    assert machines.load_profile("dane").account == "pls2"
+    monkeypatch.setenv("CHIMES_ACCOUNT", "mybank")
+    assert machines.load_profile("dane").account == "mybank"
+
+
+def test_dry_run_and_real_submission_send_the_same_script(tmp_path, monkeypatch):
+    """What the user approves in a dry run is exactly what sbatch receives."""
+    from agentic_chimes.hpc import slurm
+
+    profile = machines.load_profile("dane")
+    kw = dict(job_name="same", commands=["echo hi"], nodes=1, walltime_hours=0.5, queue="debug")
+    dry = slurm.submit_job(profile, work_dir=tmp_path / "dry", dry_run=True, **kw)
+    sent = {}
+
+    def fake_run(cmd, cwd=None, **k):
+        sent["script"] = (Path(cwd) / cmd[1]).read_text()
+        return subprocess.CompletedProcess(cmd, 0, stdout="Submitted batch job 4242\n", stderr="")
+
+    monkeypatch.setattr(slurm.subprocess, "run", fake_run)
+    real = slurm.submit_job(profile, work_dir=tmp_path / "real", dry_run=False, **kw)
+    assert real.job_id == "4242"
+    assert sent["script"] == dry.job_file.read_text()
+    assert "conda activate" not in sent["script"]          # dane no longer forces a named env
+    assert f"export PATH={Path(sys.executable).parent}" in sent["script"]
+
+
+def test_node_local_job_dir_is_refused(tmp_path, monkeypatch):
+    from agentic_chimes.hpc import slurm
+
+    monkeypatch.delenv("CHIMES_AGENT_ALLOW_LOCAL_JOB_DIRS")
+    with pytest.raises(ValueError, match="node-local"):
+        slurm.check_shared_dir("/tmp/some_run")
+    slurm.check_shared_dir("/p/lustre2/someone/run")  # shared: fine
 
 
 def test_all_builtin_profiles_set_ntasks_default():

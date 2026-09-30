@@ -37,6 +37,28 @@ chimes-agent dataset-select --frames pool.xyzf --method stratified_holdout \
   pattern used in prior HEA/binary-alloy studies with this toolchain,
   generalized to any element set.
 
+### Correlated frames go to one side (`--split-by group`, the default)
+
+Consecutive steps of one relaxation, or closely spaced MD frames, are
+near-copies. If one lands in training and its neighbor in the holdout, the
+holdout error measures memorization and overstates accuracy.
+`stratified_holdout` therefore links frames that have:
+
+- identical atoms in the same order;
+- cells within `--group-cell-tol` (3 %);
+- a minimum-image RMS displacement below `--group-rmsd` (0.3 Å), checked
+  against nearby frames in file order.
+
+It then holds out whole connected groups. When a composition class is a
+single group (one trajectory), it holds out the class's last frames as a
+contiguous block and adds a note. `groups` in the output reports
+`n_groups`, `largest_group` and those notes.
+
+On the Cu-Zr MatPES set (already farthest-point subsampled), 158 frames
+formed 154 groups, so the split barely changed. Trajectory or relaxation
+data is where the grouping matters. `--split-by frame` restores
+independent per-frame splitting.
+
 ## The `fps` descriptor
 
 Deliberately simple and self-contained — **not** the paper's full
@@ -61,6 +83,8 @@ where a heavier descriptor could plug in later):
 - `--seed` (default 42)
 - `--descriptor {composition,energy,composition_energy}` (default
   `composition`; `fps` only)
+- `--split-by {group,frame}` (default `group`), `--group-rmsd` (0.3 Å),
+  `--group-cell-tol` (0.03): `stratified_holdout` only, see above
 
 ## Output
 

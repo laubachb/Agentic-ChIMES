@@ -12,6 +12,8 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 ARGV = ["dataset-select", "--frames", "unused.xyzf", "--method", "random"]
 
 
@@ -79,9 +81,48 @@ def test_dry_run_does_not_block_the_real_run(tmp_path):
         "from agentic_chimes import cli\n"
         "from agentic_chimes.stages import dataset_select\n"
         f"dataset_select.run = lambda args: {body.replace('return ', '')}\n"
+        "dataset_select.SUPPORTS_DRY_RUN = True  # stand-in for a submitting stage\n"
         "argv = " + repr(ARGV + ["--output-dir", str(tmp_path)]) + "\n"
         "cli.main(argv + ['--dry-run']); cli.main(argv)\n"
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     outs = [json.loads(chunk) for chunk in proc.stdout.replace("}\n{", "}\n\x00{").split("\x00")]
     assert outs[0]["dry"] is True and outs[1]["dry"] is False
+
+
+def test_json_in_rejects_unknown_keys_and_wrong_types(tmp_path):
+    import json as _json
+
+    from agentic_chimes import cli as _cli
+
+    bad = tmp_path / "typo.json"
+    bad.write_text(_json.dumps({"holdout_xyzff": "h.xyzf"}))
+    parser = _cli.build_parser()
+    args = parser.parse_args(["evaluate", "--json-in", str(bad)])
+    with pytest.raises(ValueError, match="unknown key"):
+        _cli._apply_json_in(args, args._module.SCHEMA)
+
+    wrong = tmp_path / "type.json"
+    wrong.write_text(_json.dumps({"max_frames": "ten"}))
+    args = parser.parse_args(["evaluate", "--json-in", str(wrong)])
+    with pytest.raises(ValueError, match="max_frames"):
+        _cli._apply_json_in(args, args._module.SCHEMA)
+
+
+def test_dry_run_refused_by_stages_without_one(capsys):
+    from agentic_chimes import cli as _cli
+
+    rc = _cli.main(["dataset-select", "--dry-run", "--frames", "x.xyzf"])
+    assert rc == 1
+    assert "no --dry-run mode" in capsys.readouterr().out
+
+
+def test_doctor_quick_reports_structured_checks():
+    from types import SimpleNamespace
+
+    from agentic_chimes.stages import doctor
+
+    res = doctor.run(SimpleNamespace(machine=None, quick=True))
+    assert {"ok", "n_fail", "n_warn", "checks"} <= set(res)
+    assert all(c["status"] in ("ok", "warn", "fail") for c in res["checks"])
+    assert all("fix" in c for c in res["checks"] if c["status"] != "ok")

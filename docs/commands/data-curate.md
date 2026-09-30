@@ -58,7 +58,10 @@ squares and compares per-atom residuals, so compositions are comparable.
 
 `--target-size N` does farthest-point sampling (composition + per-atom
 energy descriptor) before splitting. `--holdout-fraction` (default 0.2) does a
-composition-stratified split; `--no-holdout` skips it.
+composition-stratified split; `--no-holdout` skips it. The split keeps
+correlated frames together (`--split-by group`, default; see
+[dataset-select](dataset-select.md)), so a relaxation path or trajectory is
+never on both sides.
 
 ## Output files
 

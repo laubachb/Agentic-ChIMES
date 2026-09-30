@@ -106,3 +106,48 @@ def test_n_select_out_of_range_raises(tmp_path):
     pool = _make_pool(tmp_path)
     with pytest.raises(ValueError, match="out of range"):
         _run(tmp_path, frames=str(pool), method="random", n_select=1000, holdout_fraction=None, seed=1)
+
+
+def _trajectory(n, start, rng, step=0.05, natoms=8, box=8.0):
+    """n frames of a slowly moving configuration (a relaxation / closely spaced MD)."""
+    import numpy as np
+
+    pos = rng.uniform(0, box, size=(natoms, 3)) if start is None else start
+    out = []
+    for _ in range(n):
+        pos = pos + rng.normal(0, step, size=pos.shape)
+        out.append(xyzf_io.Frame(symbols=["Cu"] * natoms, positions=pos.tolist(), forces=[[0, 0, 0]] * natoms,
+                                 box=[box] * 3, energy=0.0))
+    return out
+
+
+def test_group_split_never_separates_correlated_frames(tmp_path):
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    frames, traj_of = [], []
+    for t in range(10):                       # 10 independent trajectories x 6 frames
+        tr = _trajectory(6, None, rng)
+        frames += tr
+        traj_of += [t] * len(tr)
+    path = tmp_path / "pool.xyzf"
+    xyzf_io.write_xyzf(frames, path)
+    res = _run(tmp_path, frames=str(path), method="stratified_holdout", n_select=None, holdout_fraction=0.2, seed=3,
+               descriptor="composition", split_by="group", group_rmsd=0.3, group_cell_tol=0.03)
+    assert res["groups"]["n_groups"] == 10
+    held = {traj_of[i] for i in res["holdout_indices"]}
+    kept = {traj_of[i] for i in res["selected_indices"]}
+    assert held and not (held & kept)          # no trajectory on both sides
+    assert 6 <= res["n_holdout"] <= 18
+
+
+def test_single_trajectory_falls_back_to_contiguous_block(tmp_path):
+    import numpy as np
+
+    frames = _trajectory(20, None, np.random.default_rng(1))
+    path = tmp_path / "pool.xyzf"
+    xyzf_io.write_xyzf(frames, path)
+    res = _run(tmp_path, frames=str(path), method="stratified_holdout", n_select=None, holdout_fraction=0.25, seed=0,
+               descriptor="composition", split_by="group", group_rmsd=0.3, group_cell_tol=0.03)
+    assert res["holdout_indices"] == list(range(15, 20))
+    assert res["groups"]["notes"]

@@ -79,6 +79,9 @@ Write `01_data/DATA_PLAN.md` before fetching anything:
   (later AL rounds must reuse it). Load `chimes-hpc-jobs` for the rest.
 - After `qe-relabel --collect`, run `data-curate` on the `labeled.xyzf`
   (its `provenance.json` carries the settings), with `--holdout-fraction`.
+  The split keeps correlated frames (relaxation paths, closely spaced MD
+  frames) on one side (`--split-by group`, default). Read its note when a
+  class was a single trajectory.
 
 ### What the literature adds (see `chimes-literature`)
 

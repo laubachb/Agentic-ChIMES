@@ -56,6 +56,7 @@ SCHEMA = {
         "coverage_cutoff_ang": {"type": "number", "default": 6.0, "description": "Pair-distance analysis radius."},
         "target_size": {"type": ["integer", "null"], "description": "Farthest-point subsample to this many frames before splitting."},
         "holdout_fraction": {"type": ["number", "null"], "default": 0.2, "description": "Composition-stratified holdout; null = no split."},
+        "split_by": {"type": "string", "enum": ["group", "frame"], "default": "group", "description": "Hold out whole groups of correlated frames (relaxation paths, closely spaced MD frames; see dataset-select) or independent frames. group avoids near-copies of training frames in the holdout, which overstates accuracy."},
         "allow_mixed_theory": {"type": "boolean", "default": False, "description": "Permit merging pools from different datasets or levels of theory. Energies from different DFT setups are not comparable; only use after checking settings match."},
         "seed": {"type": "integer", "default": 42},
     },
@@ -83,6 +84,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--coverage-cutoff-ang", dest="coverage_cutoff_ang", type=float, default=6.0)
     parser.add_argument("--target-size", dest="target_size", type=int, default=None)
     parser.add_argument("--holdout-fraction", dest="holdout_fraction", type=float, default=0.2)
+    parser.add_argument("--split-by", dest="split_by", choices=["group", "frame"], default="group")
     parser.add_argument("--no-holdout", dest="holdout_fraction", action="store_const", const=None)
     parser.add_argument("--allow-mixed-theory", dest="allow_mixed_theory", action="store_true", default=False)
     parser.add_argument("--seed", type=int, default=42)
@@ -340,12 +342,15 @@ def run(args) -> dict:
     if holdout_fraction:
         s = dataset_select.run(ns(frames=str(curated), method="stratified_holdout", n_select=None,
                                   holdout_fraction=holdout_fraction, seed=seed, descriptor="composition",
-                                  output_dir=str(out / "_split")))
+                                  split_by=getattr(args, "split_by", "group") or "group", group_rmsd=0.3,
+                                  group_cell_tol=0.03, output_dir=str(out / "_split")))
         train_path, holdout_path = out / "train.xyzf", out / "holdout.xyzf"
         xyzf_io.write_xyzf([curated_frames[i] for i in s["selected_indices"]], train_path)
         xyzf_io.write_xyzf([curated_frames[i] for i in s["holdout_indices"]], holdout_path)
         split = {"train_xyzf": str(train_path), "holdout_xyzf": str(holdout_path),
-                 "n_train": s["n_selected"], "n_holdout": s["n_holdout"]}
+                 "n_train": s["n_selected"], "n_holdout": s["n_holdout"], "split_by": s.get("split_by"),
+                 "n_groups": (s.get("groups") or {}).get("n_groups")}
+        warnings.extend((s.get("groups") or {}).get("notes", []))
 
     removal_counts = dict(Counter(r["reason"].split(":")[0].split()[0] for r in removed))
     fvals = [force_norms[k] for k in kept if k in force_norms]

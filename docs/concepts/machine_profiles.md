@@ -1,116 +1,124 @@
 # Machine profiles
 
-Every HPC-touching stage (`setup`, `submit`, and later `amat-build --hpc`,
-`solve --algorithm dlars`, `qe-relabel`, `lammps-run`) takes a machine
-profile: a declarative YAML describing one cluster's account, partitions,
-module set, and defaults. Built-in profiles live in
-`src/agentic_chimes/machines/profiles/*.yaml`; `chimes-agent <stage> --hpc
-<name>` resolves a built-in by name first, then falls back to treating the
-argument as a path to your own YAML file — so adding a new cluster never
-requires touching package code.
+Every stage that submits Slurm work takes `--machine <profile>`. That
+includes:
+
+- `setup`, `submit`, `qe-relabel`
+- `amat-build`, `solve` (DLARS), `model-build`, `sweep`
+- `hyper-search`, `md-check`, `benchmark`
+
+A profile is a small YAML file describing one cluster: its account,
+partitions, modules and defaults. Built-in profiles live in
+`src/agentic_chimes/machines/profiles/*.yaml`. `--machine` takes a built-in
+name (`dane`, `stampede3`) or a path to your own YAML file, so adding a
+cluster never requires touching package code.
+
+## Accounts and paths come from your environment
+
+Every string in a profile may use `${VAR}` or `${VAR:-default}`, expanded
+when the profile loads. The shipped profiles use this so they carry no
+personal settings:
+
+```bash
+export CHIMES_ACCOUNT=<your Slurm bank / TACC allocation>
+```
+
+| profile | `account` | `scratch_root` |
+|---|---|---|
+| `dane` | `${CHIMES_ACCOUNT:-pls2}` | `/p/lustre2/${USER}` |
+| `stampede3` | `${CHIMES_ACCOUNT}` (required) | `${SCRATCH}` |
+
+A profile whose account is empty refuses to render a job and tells you to
+set `CHIMES_ACCOUNT`.
 
 ## Schema
 
 ```yaml
 name: dane                     # required
-job_system: slurm              # required: slurm | conda-slurm | TACC | UM-ARC | torque
-                                #   (torque submission works upstream; completion polling does not -- see helpers.wait_for_job)
-launcher: srun                 # required: srun | ibrun | ...  (informational; stages that shell out to
-                                #   an MPI program read this to build their own command line)
-account: pls2                  # required: passed as sbatch -A
-hosttype: LLNL-LC              # required: which codes/*/modfiles/<hosttype>.mod the vendored
-                                #   forks' own install.sh scripts source (see `chimes-agent setup`)
-partitions:                    # required: logical name -> real partition/queue string
+job_system: slurm              # required: slurm | TACC | UM-ARC (sbatch) or torque (qsub)
+launcher: srun                 # required: srun | ibrun | ...
+account: ${CHIMES_ACCOUNT:-pls2}   # required: passed as sbatch -A
+hosttype: LLNL-LC              # required: which codes/*/modfiles/<hosttype>.mod the forks' install scripts use
+partitions:                    # required: logical name -> real partition
   debug: pdebug
   batch: pbatch
 default_ntasks_per_node: 112   # required: see "the Dane gotcha" below
-require_ntasks_per_node_or_exclusive: true   # default true; refuses to submit/render without one
-poll_interval_s: 60            # default 60, matches al_driver's own squeue-poll cadence
-modules:                       # module load list, sourced before any build/submit
+require_ntasks_per_node_or_exclusive: true
+poll_interval_s: 60
+modules:                       # `module load` line in every job script
   - intel-classic/2021.6.0
   - mvapich2/2.3.7
-conda_env: mat_mcts            # optional; `conda activate <env>` added to rendered job scripts
-filesystem:                    # optional, informational for now (docs/tooling, not enforced)
+# conda_env: <name>            # optional, see "Which Python a job runs"
+filesystem:
   scratch_root: /p/lustre2/${USER}
   max_small_files_per_dir: 5000
   bulk_archive_root: /p/lustre3/${USER}
-qe:                             # optional, Quantum ESPRESSO build/run settings for this machine
-  configure_extra_args: []      # extra flags for QE's own ./configure at `chimes-agent setup`
+qe:
+  configure_extra_args: []     # extra flags for QE's ./configure at `chimes-agent setup`
 ```
-
-## The Dane gotcha this profile exists to close
-
-A bare `sbatch -N 1` on Dane allocates **one CPU and about 2.3GB**, not a
-full node — every parallel job (multiprocessing, `xargs -P`, `srun`)
-submitted that way silently crawls or gets OOM-killed. `hpc/slurm.py` and
-`hpc/dry_run.py` always fill in `default_ntasks_per_node` when a caller
-doesn't override it explicitly, and `require_ntasks_per_node_or_exclusive`
-refuses to render or submit a job without one — this is enforced by
-default, not something you have to remember to pass. See
-`tests/unit/test_dry_run.py` for the regression test.
 
 ## Adding a new machine
 
-1. Copy `src/agentic_chimes/machines/profiles/dane.yaml` (or `stampede3.yaml`
-   for a TACC-style system) to a new file, anywhere — it doesn't need to
-   live inside the package.
-2. Fill in the required keys above for your cluster.
-3. Use it with `--hpc /path/to/your_cluster.yaml` on any stage that takes
-   `--hpc`, or `chimes-agent setup --machine /path/to/your_cluster.yaml`.
+1. Copy `dane.yaml` (Slurm) or `stampede3.yaml` (TACC-style) anywhere.
+2. Fill in the required keys; use `${CHIMES_ACCOUNT}` rather than a literal
+   account if others will use the file.
+3. Pass the path: `chimes-agent setup --machine ./my_cluster.yaml`, then
+   `--machine ./my_cluster.yaml` on any submitting stage.
+4. To use a short name, add the file under
+   `src/agentic_chimes/machines/profiles/<name>.yaml`.
 
-If you use it often enough to want a short name, add it under
-`src/agentic_chimes/machines/profiles/` as `<name>.yaml` and it becomes a
-built-in (`--hpc <name>`).
+## What a submission does
 
-## What `hpc/slurm.py` actually does
+`hpc/slurm.py` has **one renderer** (`hpc/dry_run.render_sbatch_script`)
+for both modes:
 
-`submit_job(profile, ...)` is a thin wrapper around al_driver's own,
-already-working `create_and_launch_job`/`wait_for_job(s)`
-(`codes/al_driver-LLfork/src/helpers.py`), imported from its vendored
-location rather than copied. The wrapper's only added value: filling in
-`ntasks_per_node` from the profile default, translating a logical queue
-name (`"debug"`/`"batch"`) to the machine's real partition string via
-`profile.queue_for(...)`, and `dry_run=True` rendering the sbatch script
-(via `hpc/dry_run.py`) instead of calling `sbatch`. It does not
-reimplement Slurm submission or job polling.
+- **`--dry-run`** writes the script and stops.
+- **A real submission** writes the same script and runs `sbatch` on it
+  (`qsub` for torque).
 
-## Shared filesystem required for real HPC submissions
+What you approve in the dry run is byte-for-byte what runs
+(`tests/unit/test_dry_run.py` checks this). Waiting for jobs still uses
+al_driver's `helpers.wait_for_job(s)`.
 
-`--output-dir` (or `work_dir`) for any stage that submits a **real**
-(non-dry-run) Slurm job must be on a filesystem the compute nodes can see
-— `/p/lustre2/...`, not a login-node-local path like `/tmp` or a
-per-session scratch directory under it. This isn't a `chimes-agent`
-restriction, it's how the cluster is built: a compute node has its own
-local `/tmp`, physically separate from the login node's. A job submitted
-with `--output-dir` under `/tmp` will still show as `COMPLETED` in
-`sacct` (Slurm itself doesn't know or care what the job's commands did to
-files), but every file the job reads or writes lands on the *compute
-node's* local disk, invisible from wherever you're checking — the job
-silently runs against missing input and produces no visible output.
+The script always carries:
 
-This was found the hard way validating `solve --algorithm dlars`'s real
-HPC path (see `docs/commands/solve.md`): a real submission with
-`--output-dir` under a `/tmp` scratchpad path came back `COMPLETED`
-with zero output files anywhere reachable; the same submission against a
-`/p/lustre2/...` path produced `stdoutmsg`, module-load output, and
-command output exactly as expected. `--dry-run` previews render correctly
-either way (no filesystem access needed to just write a script file
-locally), so this only bites on a real submission — always point any
-stage's `--output-dir` at shared storage before dropping `--dry-run`.
+- `--ntasks-per-node` (the profile default unless the stage right-sizes
+  it, e.g. `hyper-search`, `md-check`);
+- `-A <account>`, `-p <partition>`, `-V`, `-o stdoutmsg`;
+- the profile's `module load` line;
+- `export PATH=<bin dir of the Python that submitted the job>:$PATH`.
 
-## A Slurm walltime gotcha already closed here
+### Which Python a job runs
 
-`sbatch -t` wants `HH:MM:SS` (or a similarly qualified format) — a bare
-decimal hour count like `1.5` is not valid Slurm time syntax (a bare
-number is parsed as *minutes*, and the decimal point is rejected
-outright). Every `walltime_hours` value passed through this repo's
-`hpc/slurm.py`/`hpc/dry_run.py` is converted via
-`hpc.dry_run.hours_to_slurm_time()` before it ever reaches `sbatch` — this
-was a real, previously-undetected bug (every earlier `--dry-run` preview
-looked fine since nothing validated the `-t` value's actual Slurm
-validity) until the first real submission surfaced it; see
-`tests/unit/test_dry_run.py::test_rendered_script_never_has_a_bare_decimal_walltime`
-for the regression test. You don't need to do anything to get this right
-— every stage's `--walltime-hours` flag already goes through the fixed
-path — this section exists so a future direct caller of `hpc.submit_job`
-knows not to bypass it.
+Jobs run the interpreter that submitted them, so compute-node stages see
+the same `agentic_chimes` install and packages as the login-node ones. A
+profile may still name a `conda_env`. It is activated only if `conda` is
+available in the batch shell, before the PATH line, so the submitting
+interpreter still comes first.
+
+!!! note "Earlier versions"
+    Real submissions used to go through al_driver's `create_and_launch_job`,
+    which writes its own script. Dry runs showed a `conda activate <env>`
+    line that real jobs never ran, and on Dane the named environment was
+    not the one the CLI ran in.
+
+## Shared filesystem required
+
+Job directories must be on storage the compute nodes can see
+(`/p/lustre2/...`), never a login node's `/tmp`. A job submitted from `/tmp`
+reports COMPLETED in `sacct` but reads and writes the compute node's own
+`/tmp`, so nothing comes back. Every submission (dry run included) now
+refuses `/tmp`, `/var/tmp`, `/dev/shm` and `$TMPDIR`, with a message
+pointing at the profile's `scratch_root`.
+
+## The Dane gotcha
+
+A bare `sbatch -N 1` on Dane allocates **one CPU and about 2.3 GB**, not a
+full node. The renderer always writes `--ntasks-per-node`, and
+`require_ntasks_per_node_or_exclusive` refuses a script without one.
+
+## Walltime format
+
+`sbatch -t` needs `HH:MM:SS`; a bare `1.5` is read as minutes and the
+decimal is rejected. Every `--walltime-hours` goes through
+`hpc.dry_run.hours_to_slurm_time()`.

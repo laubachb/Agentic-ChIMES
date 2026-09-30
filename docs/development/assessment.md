@@ -34,22 +34,57 @@ example. The main risks for a general user are:
 4. **Missing phases.** There is no MD agent and no active-learning agent,
    so phases 5-6 of the intended workflow are still manual playbooks.
 
+## Status (updated 2026-09-29, same day)
+
+Fixed since the audit, validated by tests and on Dane:
+
+- **Bugs:** B1-B4 and B6-B10. B5 (PDFs in git history) needs the
+  repository owner.
+- **Portability:**
+  - `${VAR}` profile expansion (`CHIMES_ACCOUNT`);
+  - jobs run the submitting interpreter;
+  - `setup` takes profile paths.
+- **Accuracy:**
+  - group-aware holdout splits;
+  - `weights` stage with the published presets;
+  - `hyper-search --prefer richer`;
+  - `md-check` (MD validation of candidates plus the active-learning
+    harvest);
+  - triclinic LAMMPS support;
+  - automatic replication of thin cells in `lammps-run`. This was a newly
+    found bug: LAMMPS energies were 30-50 kcal/mol off on 2-atom cells.
+
+Still open:
+
+- `doctor` / self-test;
+- stresses through the data stages;
+- per-pair 3-body cutoffs;
+- hierarchical fitting and fingerprint wrappers;
+- more data backends;
+- the MD and active-learning *agents* (their stages now exist);
+- a CI integration tier;
+- slimming `auto-build`;
+- the default smoothing. The CUBIC-vs-TERSOFF comparison on Cu-Zr
+  (`docs/commands/hyper-search.md`) kept CUBIC for small data. TERSOFF made
+  many-body terms active but overfit and did not improve forces on 126
+  frames. Revisit on a larger dataset.
+
 ## 1. Bugs
 
 Ranked by consequence.
 
 | # | Severity | Bug | Where | Consequence | Fix |
 |---|---|---|---|---|---|
-| B1 | High | **Dry run renders a different script from the real submission.** Dry runs go through `hpc/dry_run.render_sbatch_script`, which adds `conda activate <env>`. Real submissions go through al_driver's `helpers.create_and_launch_job`, which does not (verified: the real `run.cmd` of a hyper-search job has no `conda activate`). | `hpc/slurm.py:93-117`, `hpc/dry_run.py:91` | The user approves one script and a different one runs. Jobs work on Dane only because the login environment is inherited. | Render once with the toolkit's renderer and `sbatch` that file in both modes. Test that dry run and real submission produce byte-identical scripts. |
-| B2 | High | **Fit cache key ignores the data and solver.** `hyper-search` point caches key on `sha256(cfg)`; the solver/α come from the task, and the training/holdout files are not hashed. | `stages/_hyper.py:180-181` | Re-running with new data or another `--algorithm`/`--alpha` in the same output directory silently reuses old fits. | Hash the data file content (size + mtime at least), the solver, α and the evaluation settings into the key. |
-| B3 | High | **Stage manifests hash paths, not content.** The short-circuit compares the input dict, including file *paths*. | `stages/_manifest.py:24-25` | Regenerating `train.xyzf` in place and re-running returns the previous result. | Include content hashes (or size + mtime) for file-valued inputs. |
-| B4 | High | **Permission bypass.** `settings.json` allows `Bash(python3 -m agentic_chimes.cli *)` without asking, but the "ask" rules (qe-relabel, al-run, auto-build, `--machine`) only match `chimes-agent …`. | `.claude/settings.json:5,18-22` | An agent can submit Slurm jobs through the module form without the approval gate. | Remove the module-form allow, or mirror every ask rule for it. |
+| B1 ✅ | High | **Dry run renders a different script from the real submission.** Dry runs go through `hpc/dry_run.render_sbatch_script`, which adds `conda activate <env>`. Real submissions go through al_driver's `helpers.create_and_launch_job`, which does not (verified: the real `run.cmd` of a hyper-search job has no `conda activate`). | `hpc/slurm.py:93-117`, `hpc/dry_run.py:91` | The user approves one script and a different one runs. Jobs work on Dane only because the login environment is inherited. | Render once with the toolkit's renderer and `sbatch` that file in both modes. Test that dry run and real submission produce byte-identical scripts. |
+| B2 ✅ | High | **Fit cache key ignores the data and solver.** `hyper-search` point caches key on `sha256(cfg)`; the solver/α come from the task, and the training/holdout files are not hashed. | `stages/_hyper.py:180-181` | Re-running with new data or another `--algorithm`/`--alpha` in the same output directory silently reuses old fits. | Hash the data file content (size + mtime at least), the solver, α and the evaluation settings into the key. |
+| B3 ✅ | High | **Stage manifests hash paths, not content.** The short-circuit compares the input dict, including file *paths*. | `stages/_manifest.py:24-25` | Regenerating `train.xyzf` in place and re-running returns the previous result. | Include content hashes (or size + mtime) for file-valued inputs. |
+| B4 ✅ | High | **Permission bypass.** `settings.json` allows `Bash(python3 -m agentic_chimes.cli *)` without asking, but the "ask" rules (qe-relabel, al-run, auto-build, `--machine`) only match `chimes-agent …`. | `.claude/settings.json:5,18-22` | An agent can submit Slurm jobs through the module form without the approval gate. | Remove the module-form allow, or mirror every ask rule for it. |
 | B5 | High | **ChIMES papers were pushed publicly.** The PDFs in `chimes_papers/` were committed in `fe2f40c` and pushed. They are now untracked and gitignored, but remain in history. | git history | Publisher copyright exposure. | Rewrite history (`git filter-repo --path chimes_papers --invert-paths`) and force-push. This is the repository owner's decision. |
-| B6 | Medium | **`setup --machine` rejects custom profiles.** `choices=available_profiles()` allows only the bundled names, although other stages accept a profile path. | `stages/setup_cmd.py:38` | A user on a new cluster cannot build with their own profile. | Accept a name or a path, as the other stages do. |
-| B7 | Medium | **`--json-in` is not validated.** Arbitrary keys are `setattr` onto the args; typos are silently ignored, and wrong types fail deep inside the stage. | `cli.py:92-98` | "Why did my setting not apply?" | Validate against the stage `SCHEMA`: reject unknown keys, coerce or reject types. |
-| B8 | Medium | **`--dry-run` is accepted but ignored by non-HPC stages.** | `cli.py` | A user expecting a preview gets real work. | Reject `--dry-run` on stages that do not implement it, or give them a plan-only mode. |
-| B9 | Medium | **No shared-filesystem check.** `--output-dir` under `/tmp` with `--machine` submits a job whose output the login node never sees; it reports COMPLETED with nothing written. | all `--machine` stages | Lost jobs; this is only documented in CLAUDE.md. | Refuse (or warn) when the output dir is not under the profile's `scratch_root`. |
-| B10 | Low | **Inconsistent α advice.** `chimes-build-model` says "1e-5 normalized, 1e-2 un-normalized" (the chimes_lsq docs); `hyper-search` uses 1e-5 raw `lassolars`, which Cu-Zr measurements supported. | skills | Agents may give contradictory advice. | Reconcile the text: state both sources and when each applies. |
+| B6 ✅ | Medium | **`setup --machine` rejects custom profiles.** `choices=available_profiles()` allows only the bundled names, although other stages accept a profile path. | `stages/setup_cmd.py:38` | A user on a new cluster cannot build with their own profile. | Accept a name or a path, as the other stages do. |
+| B7 ✅ | Medium | **`--json-in` is not validated.** Arbitrary keys are `setattr` onto the args; typos are silently ignored, and wrong types fail deep inside the stage. | `cli.py:92-98` | "Why did my setting not apply?" | Validate against the stage `SCHEMA`: reject unknown keys, coerce or reject types. |
+| B8 ✅ | Medium | **`--dry-run` is accepted but ignored by non-HPC stages.** | `cli.py` | A user expecting a preview gets real work. | Reject `--dry-run` on stages that do not implement it, or give them a plan-only mode. |
+| B9 ✅ | Medium | **No shared-filesystem check.** `--output-dir` under `/tmp` with `--machine` submits a job whose output the login node never sees; it reports COMPLETED with nothing written. | all `--machine` stages | Lost jobs; this is only documented in CLAUDE.md. | Refuse (or warn) when the output dir is not under the profile's `scratch_root`. |
+| B10 ✅ | Low | **Inconsistent α advice.** `chimes-build-model` says "1e-5 normalized, 1e-2 un-normalized" (the chimes_lsq docs); `hyper-search` uses 1e-5 raw `lassolars`, which Cu-Zr measurements supported. | skills | Agents may give contradictory advice. | Reconcile the text: state both sources and when each applies. |
 
 ## 2. Gaps for general users
 

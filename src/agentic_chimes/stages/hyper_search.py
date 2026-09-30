@@ -48,6 +48,7 @@ from . import _hyper, hyper_analyze
 
 NAME = "hyper-search"
 SUMMARY = "Staged search over cutoffs, Morse lambdas and 2b/3b/4b orders; picks the cheapest near-best model on holdout error."
+SUPPORTS_DRY_RUN = True
 
 DEFAULTS = {
     "orders_2b": [8, 10, 12, 14, 16, 18],
@@ -76,6 +77,8 @@ SCHEMA = {
         "s_maxim_3b": {"type": ["array", "null"], "items": {"type": "number"}},
         "s_maxim_4b": {"type": ["array", "null"], "items": {"type": "number"}},
         "lambda_scales": {"type": "array", "items": {"type": "number"}, "default": DEFAULTS["lambda_scales"]},
+        "prefer": {"type": "string", "enum": ["cheaper", "richer"], "default": "cheaper", "description": "Among statistically tied points: cheaper = lowest estimated MD cost (a final model); richer = most coefficients (a model that will go through active learning: the literature errs toward complexity before AL and prunes once the data is final, Lindsey et al. 2025). richer also skips the exclusion stage."},
+        "weights_preset": {"type": "string", "default": "uniform", "description": "Fitting weights for every fit (weights stage presets: uniform, al_driver, lindsey2020, carbon2_large, hierarchical2026). Matters when energies (or stresses) are fitted alongside forces. Changing it refits every point."},
         "smoothing": {"type": "string", "default": "CUBIC", "description": "fm_setup.in FCUTTYP for every fit: CUBIC (chimes_lsq default) or 'TERSOFF <f_O>' with 0 < f_O < 1. The cubic form multiplies one smoothing factor per cluster distance and shrinks 3-/4-body terms; published many-body ChIMES models use TERSOFF 0.5-0.75 (Lindsey et al., JCP 153, 134117, 2020). Changing it refits every point."},
         "objective": {"type": "string", "enum": ["auto", "force", "force+energy"], "default": "auto", "description": "auto = force+energy when energies are fitted, else force."},
         "energy_weight": {"type": "number", "default": 0.1, "description": "Score per kcal/mol/atom of energy RMSE, for objective force+energy."},
@@ -123,6 +126,8 @@ def add_arguments(parser) -> None:
     parser.add_argument("--s-maxim-3b", dest="s_maxim_3b", type=_floats, default=None)
     parser.add_argument("--s-maxim-4b", dest="s_maxim_4b", type=_floats, default=None)
     parser.add_argument("--lambda-scales", dest="lambda_scales", type=_floats, default=None)
+    parser.add_argument("--prefer", choices=["cheaper", "richer"], default="cheaper")
+    parser.add_argument("--weights-preset", dest="weights_preset", default="uniform")
     parser.add_argument("--smoothing", default="CUBIC", help="CUBIC or 'TERSOFF <f_O>'")
     parser.add_argument("--objective", choices=["auto", "force", "force+energy"], default="auto")
     parser.add_argument("--energy-weight", dest="energy_weight", type=float, default=0.1)
@@ -307,6 +312,9 @@ def run(args) -> dict:
     four_body = getattr(args, "four_body", "auto") or "auto"
 
     smoothing = _smoothing(getattr(args, "smoothing", None))
+    prefer = getattr(args, "prefer", None) or "cheaper"
+    if prefer not in ("cheaper", "richer"):
+        raise ValueError(f"prefer must be cheaper or richer, got {prefer!r}")
     base_cfg = {
         "elements": elements,
         "s_minim": {p: v["suggested"]["s_minim"] for p, v in analysis["pairs"].items()},
@@ -316,6 +324,13 @@ def run(args) -> dict:
     }
     if smoothing != "CUBIC":  # only non-default values enter the cache key, so CUBIC caches stay valid
         base_cfg["fcuttyp"] = smoothing
+    from . import weights as _weights
+
+    weights_preset = getattr(args, "weights_preset", None) or "uniform"
+    if weights_preset not in _weights.PRESETS:
+        raise ValueError(f"weights_preset must be one of {sorted(_weights.PRESETS)}, got {weights_preset!r}")
+    if weights_preset != "uniform":  # same trick: uniform caches stay valid
+        base_cfg["weights_preset"] = weights_preset
     train_frames = xyzf_io.read_xyzf(train)
     n_train = len(train_frames)
     density = _number_density(train_frames)
@@ -339,7 +354,7 @@ def run(args) -> dict:
     def pick(results):
         results = [r for r in results if r.get("status") != "done" or usable(r)]
         return _hyper.select(results, objective=objective, energy_weight=energy_weight, tolerance=tol,
-                             max_param_ratio=max_ratio, density=density)
+                             max_param_ratio=max_ratio, density=density, prefer=prefer)
 
     report_stages, notes = [], []
     current = None
@@ -423,7 +438,10 @@ def run(args) -> dict:
             notes.append(f"4b: the chosen model uses solver {current['cfg']['solver']}; later stages keep it")
 
     # ---- cluster-type exclusions
-    if "exclude" in stages and (current["cfg"].get("order_3b") or current["cfg"].get("order_4b")):
+    if "exclude" in stages and prefer == "richer":
+        report_stages.append({"stage": "exclude", "skipped": True,
+                              "reason": "prefer=richer keeps every cluster type (pruning belongs after active learning)"})
+    elif "exclude" in stages and (current["cfg"].get("order_3b") or current["cfg"].get("order_4b")):
         coverage = current.get("cluster_coverage")
         if not coverage and current.get("point_dir") and (Path(current["point_dir"]) / "fm_setup.log").is_file():
             coverage = _hyper.cluster_coverage(Path(current["point_dir"]))  # fits cached before coverage was recorded
@@ -546,7 +564,7 @@ def run(args) -> dict:
         "fcuttyp": c.get("fcuttyp", "CUBIC"),
         "fitener": c["fitener"],
         "algorithm": c.get("solver", runner.base["algorithm"]), "alpha": final.get("solver_alpha", runner.base["alpha"]),
-        "weights": "default (uniform)",
+        "weights": c.get("weights_preset", "uniform"),
     }
     (best_dir / "hyper_choice.json").write_text(json.dumps(choice, indent=1))
 
@@ -570,7 +588,7 @@ def run(args) -> dict:
         "best_dir": str(best_dir),
         "stages": report_stages,
         "notes": notes + analysis.get("notes", []),
-        "settings": {"objective": objective, "energy_weight": energy_weight, "tolerance": tol, "min_gain": min_gain, "min_signal": min_signal,
+        "settings": {"prefer": prefer, "smoothing": smoothing, "weights_preset": weights_preset, "objective": objective, "energy_weight": energy_weight, "tolerance": tol, "min_gain": min_gain, "min_signal": min_signal,
                      "max_param_ratio": max_ratio, "grid": grid, "stages": stages, "four_body": four_body,
                      "train_xyzf": str(train), "holdout_xyzf": str(holdout)},
         "n_fits": len(runner.all),

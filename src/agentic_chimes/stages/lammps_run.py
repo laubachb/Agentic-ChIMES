@@ -11,6 +11,13 @@ potential energy is parsed from the thermo log we control the format of
 (`thermo_style custom step pe`) -- a best-effort parse, not fatal if it
 fails, since forces from the dump are the primary reliable output.
 
+Cells thinner than twice the model's outer cutoff are replicated first
+(`replicate`, default true), exactly as `evaluate` does: chimesFF in LAMMPS
+gets forces right on such cells but under-counts the energy (by 30-50
+kcal/mol on 2-atom MatPES Cu-Zr cells; exact once replicated). Single-point
+results are reported per original cell (energy / copies, the first copy's
+forces); MD runs on the supercell.
+
 Correctness-critical: `elements` (LAMMPS atom-type order) and `masses`
 must match what the params.txt being tested was fit with -- see
 io/lammps_data.py's docstring.
@@ -45,6 +52,7 @@ SCHEMA = {
         "md_seed": {"type": "integer", "default": 12345},
         "lammps_bin": {"type": ["string", "null"]},
         "nprocs": {"type": "integer", "default": 1},
+        "replicate": {"type": "boolean", "default": True, "description": "Replicate cells thinner than 2x the outer cutoff (LAMMPS energies are wrong on them)."},
     },
 }
 
@@ -62,6 +70,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--md-seed", dest="md_seed", type=int, default=12345)
     parser.add_argument("--lammps-bin", dest="lammps_bin", default=None)
     parser.add_argument("--nprocs", type=int, default=1)
+    parser.add_argument("--no-replicate", dest="replicate", action="store_false", default=True)
 
 
 def _render_input(mode: str, data_file: str, params_file: str, *, temperature=300.0, nsteps=1000, timestep=1.0, md_seed=12345) -> str:
@@ -134,6 +143,23 @@ def _parse_log_pe(log_text: str) -> Optional[float]:
     return None
 
 
+def replicate_for_cutoff(frame, params_path):
+    """(frame, n_copies): the frame replicated until every perpendicular width
+    exceeds 2x the model's outer cutoff (unchanged when already wide enough)."""
+    import numpy as np
+
+    from . import evaluate
+
+    big_pos, big_sym, big_cell, ncopies = evaluate._supercell(frame, evaluate.max_outer_cutoff(params_path))
+    if ncopies == 1:
+        return frame, 1
+    n = len(big_sym)
+    box = big_cell.tolist() if frame.non_ortho else [float(x) for x in np.diag(big_cell)]
+    big = xyzf_io.Frame(symbols=big_sym, positions=big_pos.tolist(), forces=[[0.0, 0.0, 0.0]] * n, box=box,
+                        non_ortho=frame.non_ortho)
+    return big, ncopies
+
+
 def run(args) -> dict:
     for req in ("params", "structure_xyzf", "elements", "masses"):
         if not getattr(args, req, None):
@@ -145,6 +171,9 @@ def run(args) -> dict:
     if frame_index >= len(frames):
         raise ValueError(f"frame_index={frame_index} out of range (structure_xyzf has {len(frames)} frames)")
     frame = frames[frame_index]
+    original_natoms, ncopies = frame.natoms, 1
+    if getattr(args, "replicate", True) is not False:
+        frame, ncopies = replicate_for_cutoff(frame, params_path)
 
     lammps_bin = Path(args.lammps_bin) if getattr(args, "lammps_bin", None) else config.resolve_component("lammps_bin")
 
@@ -184,17 +213,23 @@ def run(args) -> dict:
             f"{lammps_bin} exited {proc.returncode}; see {work_dir / 'stdout.log'} and {log_path if log_path.is_file() else '(no log.lammps written)'}"
         )
 
-    result = {"work_dir": str(work_dir), "mode": mode, "in_lammps": str(in_path), "log": str(log_path), "data_file": str(data_path)}
+    result = {"work_dir": str(work_dir), "mode": mode, "in_lammps": str(in_path), "log": str(log_path), "data_file": str(data_path),
+              "n_copies": ncopies, "natoms_simulated": frame.natoms}
 
     dump_path = work_dir / "dump.out"
     if dump_path.is_file():
         result["dump"] = str(dump_path)
         if mode == "single_point":
-            result["forces_kcal_mol_ang"] = _parse_dump_forces(dump_path)
+            forces = _parse_dump_forces(dump_path)
+            if frame.non_ortho:  # back from LAMMPS' restricted-triclinic frame
+                import numpy as np
+
+                forces = (np.asarray(forces) @ lammps_data.rotation_for(frame)).tolist()
+            result["forces_kcal_mol_ang"] = forces[:original_natoms]
 
     if log_path.is_file():
         pe = _parse_log_pe(log_path.read_text())
         if pe is not None:
-            result["energy_kcal_mol"] = pe
+            result["energy_kcal_mol"] = pe / ncopies
 
     return result

@@ -29,6 +29,7 @@ from . import _dlars_hpc, _solvers
 
 NAME = "solve"
 SUMMARY = "Solve for params.txt from A.txt/b.txt (local: svd/ridge/lassolars/...; dlars/dlasso via --machine)."
+SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
     "required": ["A", "b", "header", "map"],

@@ -20,6 +20,7 @@ from .. import config, hpc, machines
 
 NAME = "amat-build"
 SUMMARY = "Build A.txt/b.txt/dim.txt from fm_setup.in via the chimes_lsq binary."
+SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
     "required": ["fm_setup_in"],

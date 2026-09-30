@@ -17,8 +17,9 @@ that the batch spans the energy range.
 
 Typical loop, each step a separate stage call:
 
-1. Generate candidates (e.g. `lammps-run` MD with the current model, dump
-   frames into one `.xyzf`).
+1. Generate candidates: `md-check` with the current model at the target
+   temperatures writes `harvest.xyzf` (close contacts first). Pass it as the
+   pool, or straight to `qe-relabel` if it is already small.
 2. `al-select --candidate-frames pool.xyzf --params params.txt --n-select N
    --output-dir sel_k [--central-repo <previous central_repo_out>]`
 3. `qe-relabel` the `selected_xyzf` (submit, then `--collect`); see
@@ -60,8 +61,13 @@ test is `codes/al_driver-LLfork/examples/simple_iter_single_statepoint-lmp-test/
   others. Close-contact frames are what fix MD instabilities.
 - **Weight decay.** Weight each cycle's new frames by n_cycles / I (I = the
   cycle index) so early unphysical frames cannot pull the fit away from
-  ground-truth data (Lindsey 2025, 2026). al_driver does not do this
-  unprompted; check `config.py` or weight manually when refitting.
+  ground-truth data (Lindsey 2025, 2026). For al-select rounds, use the
+  `weights` stage: `--frame-cycles cycles.json --decay-cycles n` with a
+  preset (`hierarchical2026`). In al_driver, use `WEIGHTS_*` method `B` in
+  `config.py`.
+- **Candidates.** `md-check` runs the current model at several state points
+  in one job. It writes `harvest.xyzf` with up to 20 close-contact and 20
+  other frames per run (the published recipe), ready for `qe-relabel`.
 - Refit after each ALC at the *same* hyperparameters. Once the data is
   final, a smaller basis may be justified (Lindsey 2025: err complex before
   AL, prune after).

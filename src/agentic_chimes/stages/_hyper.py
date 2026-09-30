@@ -317,24 +317,49 @@ def paired_se(rows_a, rows_b, n_boot: int = 500, seed: int = 0) -> float:
     return float((np.sqrt(sa[:, 0] / sa[:, 1]) - np.sqrt(sb[:, 0] / sb[:, 1])).std())
 
 
+def _file_sig(path) -> str:
+    st = Path(path).stat()
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
+def fit_context(task: dict) -> str:
+    """Everything besides cfg that changes a point's result: the data files
+    (by size + mtime), solver, alpha and masses. A cached point is reused only
+    when this matches, so new data or another solver in the same output
+    directory refits instead of silently returning old numbers."""
+    cfg = task["cfg"]
+    ctx = {
+        "train": [task["train_xyzf"], _file_sig(task["train_xyzf"])],
+        "holdout": [task["holdout_xyzf"], _file_sig(task["holdout_xyzf"])],
+        "n_train": task["n_train"],
+        "solver": cfg.get("solver", task["algorithm"]),
+        "alpha": cfg.get("alpha", task["alpha"]),
+        "masses": task.get("masses"),
+    }
+    return hashlib.sha256(json.dumps(ctx, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def run_point(task: dict) -> dict:
     """Fit + evaluate one configuration. Cached by config hash in its point
-    directory, so re-running a search resumes instead of refitting."""
+    directory, so re-running a search resumes instead of refitting; the cache
+    is used only when `fit_context` (data, solver, alpha) also matches."""
     from ._compose import ns
     from . import evaluate, fm_setup_gen, model_build
 
     cfg, point_dir = task["cfg"], Path(task["point_dir"])
+    context = fit_context(task)
     cached = point_dir / "result.json"
     if cached.is_file():
         prior = json.loads(cached.read_text())
-        if prior.get("status") in ("done", "timeout"):  # failures are retried: they may have been our bug
+        # failures are retried (they may have been our bug); fits from other data or solvers are redone
+        if prior.get("status") in ("done", "timeout") and prior.get("context") == context:
             return prior
     point_dir.mkdir(parents=True, exist_ok=True)
-    result = {"key": config_key(cfg), "cfg": cfg, "point_dir": str(point_dir)}
+    result = {"key": config_key(cfg), "cfg": cfg, "point_dir": str(point_dir), "context": context}
     try:
         fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
                                             task["thinnest"], str(point_dir)))
-        mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None,
+        mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None, weights_preset=cfg.get("weights_preset"),
                                 algorithm=cfg.get("solver", task["algorithm"]), alpha=cfg.get("alpha", task["alpha"]), eps=1e-5, weights=None, folds=4, normalize=False, machine=None,
                                 queue="batch", walltime_hours=1.0, nodes=1, ntasks_per_node=None, poll_interval_s=60,
                                 timeout_s=task.get("timeout_s"), output_dir=str(point_dir)))
@@ -417,9 +442,13 @@ def cost_key(r: dict, density: float = DEFAULT_DENSITY):
 
 
 def select(results: list, *, objective: str, energy_weight: float, tolerance: float, max_param_ratio: float,
-           density: float = DEFAULT_DENSITY) -> dict:
+           density: float = DEFAULT_DENSITY, prefer: str = "cheaper") -> dict:
     """Best score, then the cheapest point (cost_key) statistically tied with
     it: score - best <= max(tolerance x best, SE of the paired difference).
+    With prefer="richer", the tied point with the most coefficients is taken
+    instead: before active learning the literature errs toward complexity,
+    because a sparse initial set makes cross-validation favor bases that are
+    too small (Lindsey et al., npj Comput. Mater. 11, 26, 2025).
     The paired SE resamples holdout frames jointly for both models, so shared
     frame difficulty cancels; without per-frame data it falls back to the
     best point's own SE. Points over max_param_ratio coefficients per
@@ -447,8 +476,14 @@ def select(results: list, *, objective: str, energy_weight: float, tolerance: fl
     within = [r for r in ok if r["score"] - best["score"] <= r["tie_margin"]]
     for r in ok:
         r["md_cost"] = round(md_cost(r, density), 1)
-    chosen = min(within, key=lambda r: cost_key(r, density))
-    reason = ("lowest score and cheapest" if chosen is best else
-              f"cheapest point statistically tied with the best (difference {chosen['score'] - best['score']:.4f} <= "
-              f"margin {chosen['tie_margin']:.4f}; estimated MD cost {chosen['md_cost']:.3g} vs {best['md_cost']:.3g})")
+    if prefer == "richer":
+        chosen = min(within, key=lambda r: (-r["n_params"], r["score"]))
+        reason = ("lowest score and richest" if chosen is best else
+                  f"richest point statistically tied with the best ({chosen['n_params']} vs {best['n_params']} coefficients; "
+                  f"difference {chosen['score'] - best['score']:.4f} <= margin {chosen['tie_margin']:.4f}; prefer=richer)")
+    else:
+        chosen = min(within, key=lambda r: cost_key(r, density))
+        reason = ("lowest score and cheapest" if chosen is best else
+                  f"cheapest point statistically tied with the best (difference {chosen['score'] - best['score']:.4f} <= "
+                  f"margin {chosen['tie_margin']:.4f}; estimated MD cost {chosen['md_cost']:.3g} vs {best['md_cost']:.3g})")
     return {"chosen": chosen, "best": best, "reason": reason, "n_excluded_over_budget": len(done) - len(ok)}

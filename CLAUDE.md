@@ -9,11 +9,11 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 
 - One subcommand per stage. **`chimes-agent <stage> --describe` is the source
   of truth for a stage's inputs/outputs** — read it instead of guessing flags.
-  Stages: `setup`, `study`, `usage`, `data-search`, `data-fetch`, `data-generate`,
+  Stages: `setup`, `doctor`, `study`, `usage`, `data-search`, `data-fetch`, `data-generate`,
   `data-curate`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
   `hyper-search`, `fm-setup-gen`,
-  `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-run`.
+  `amat-build`, `solve`, `weights`, `model-build`, `sweep`, `auto-build`, `evaluate`,
+  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -28,9 +28,13 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   those with the Bash tool's `run_in_background`, then check the output
   file — do not sleep-poll. `al-run` is the exception: it detaches itself
   and returns a PID.
-- Stages with real cost accept `--dry-run` (renders the sbatch script without
-  submitting). Do this first. Caveat: `auto-build --dry-run` only previews
-  the QE submission, not the rest of the pipeline.
+- Stages with real cost accept `--dry-run`. It renders the exact sbatch
+  script a real submission would send, without submitting. Do this first.
+  Stages that submit nothing reject `--dry-run`. Caveat:
+  `auto-build --dry-run` only previews the QE submission, not the rest of
+  the pipeline.
+- `--json-in` refuses unknown keys and wrong types. If it errors, fix the
+  key name; don't drop the setting.
 
 ## Playbooks (skills)
 
@@ -91,8 +95,15 @@ present, is under `chimes_papers/text/` (gitignored; build with
   `HF_TOKEN` rather than retrying in a loop.
 - Units are fixed: energy kcal/mol, force hartree/bohr in training files.
   QE output (Ry, Ry/bohr) is converted by `qe-relabel --collect`.
-- Cutoff derivation (`auto-build`) and LAMMPS data files support
-  **orthorhombic boxes only**.
+- Cutoff derivation (`auto-build`) supports **orthorhombic boxes only**.
+  LAMMPS stages (`lammps-run`, `md-check`, `benchmark`) handle triclinic
+  cells and replicate cells thinner than 2× the cutoff (LAMMPS energies are
+  wrong on them otherwise).
+- A PreToolUse hook (`.claude/hooks/approval_gate.py`) asks the user before
+  any submission, including `--machine` hidden in a `--json-in` file and the
+  `python3 -m agentic_chimes.cli` form. Don't try to route around it.
+- Set `CHIMES_ACCOUNT` to the user's Slurm bank / allocation; profiles read
+  it (`stampede3` requires it).
 - Don't commit, push, or open PRs unless asked.
 
 ## Working on this repo itself

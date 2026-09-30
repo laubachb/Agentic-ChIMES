@@ -38,7 +38,7 @@ directory so login-node CPU time is recorded automatically.
 | 3 | Hyperparameter search (cutoffs, λ, orders, 4-body, exclusions) | **`chimes-hyperparameter-tuner`** | `02_fit/search/best/` + `HYPER_REPORT.md` |
 | 4 | Build/check the model (default weighting) | you + `chimes-fit-reviewer` | final `params.txt` registered |
 | 5 | Active learning | not yet an agent: `chimes-active-learning` skill | stabilized model |
-| 6 | MD validation | not yet an agent: `lammps-run` (orthorhombic cells) | `04_md/*` registered as `md_runs` |
+| 6 | MD validation | not yet an agent: `md-check` (candidates, stability, RDF, AL harvest) + `lammps-run` | `04_md/*` registered as `md_runs` |
 | 7 | Benchmark + compute accounting | **`chimes-benchmark`** | `05_bench/benchmark.json`, `usage/usage_report.json` |
 | 8 | Deploy + final report | `deploy`, then **`chimes-report-writer`** | `06_deploy/MODEL_CARD.md`, `REPORT.md` |
 
@@ -95,9 +95,11 @@ Read `data_manifest.json`: `train_xyzf`/`holdout_xyzf`, `level_of_theory`,
 `pairs.*.min_distance` (inner cutoffs sit just below these),
 `fit_hints.nlayers_required` (`N_LAYERS` for the outer cutoff you choose),
 `fit_hints.fitener`. Weighting: use the default (uniform) weights until
-custom schemes exist; record that in `STUDY.md`. Published
-defaults, for when a scheme is added: forces 1, energies 0.3-5, stresses 100,
-with active-learning frames decayed as n/I (see `chimes-literature`). Note `auto-build` requires
+custom schemes exist, or pick a published preset
+(`--weights-preset hierarchical2026` etc., `weights` stage); record the choice
+in `STUDY.md`. Active-learning frames decay as n/I (`weights --decay-cycles`).
+For a model that will go through active learning, ask the tuner for
+`--prefer richer` (see `chimes-literature`). Note `auto-build` requires
 orthorhombic frames; with triclinic data use the stage-by-stage route.
 Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 
@@ -109,10 +111,12 @@ each round's labels with the base data using the same checks.
 
 ## 6-8. Validate, benchmark, deploy, report
 
-- MD: run `lammps-run` (or LAMMPS directly) in `04_md/<name>/` at the
-  conditions the user cares about; register each run
-  (`--register md_runs=<dir>`). Unstable runs are the signal for active
-  learning.
+- MD: `md-check` in `04_md/check/` on the final model (and tied
+  runners-up) at the conditions the user cares about, with a DFT reference
+  if one exists. For longer production-like runs, use `lammps-run` or
+  LAMMPS directly. Register each run (`--register md_runs=<dir>`). Unstable
+  runs and close contacts are the signal for active learning, and
+  `harvest.xyzf` is the next batch to label.
 - Delegate to `chimes-benchmark` with the user's intended production runs.
   It returns the scaling job for approval, then the sizing recipe and the
   study's CPU-hours.

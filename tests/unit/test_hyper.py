@@ -237,3 +237,34 @@ def test_hyper_search_smoothing_reaches_every_fit(tmp_path, monkeypatch):
     args.output_dir = str(tmp_path / "bad")
     with pytest.raises(ValueError):
         hyper_search.run(args)
+
+
+def test_point_cache_is_invalidated_by_new_data_or_solver(tmp_path):
+    import os
+    import time
+
+    train, hold = tmp_path / "train.xyzf", tmp_path / "hold.xyzf"
+    train.write_text("a\n")
+    hold.write_text("b\n")
+    task = {"cfg": {"order_2b": 12}, "train_xyzf": str(train), "holdout_xyzf": str(hold), "n_train": 1,
+            "algorithm": "lassolars", "alpha": 1e-5, "masses": {"Cu": 63.5}}
+    base = _hyper.fit_context(task)
+    assert _hyper.fit_context(dict(task)) == base
+    assert _hyper.fit_context({**task, "alpha": 1e-3}) != base
+    assert _hyper.fit_context({**task, "cfg": {"order_2b": 12, "solver": "nridgecv"}}) != base
+    train.write_text("a\nregenerated\n")
+    os.utime(train, (time.time() + 5, time.time() + 5))
+    assert _hyper.fit_context(task) != base
+
+
+def test_select_prefer_richer_takes_the_largest_tied_model():
+    def pt(n, s):
+        return {"status": "done", "holdout_relative_force_error": s, "holdout_relative_force_se": 0.05, "n_params": n,
+                "n_equations": 10000, "cfg": {"order_2b": 12, "s_maxim_2b": 6.0, "order_3b": n // 10, "s_maxim_3b": 5.0},
+                "holdout_rmse_energy_per_atom": 0.1}
+    pts = [pt(40, 0.40), pt(200, 0.39), pt(600, 0.385)]   # all tied within SE 0.05
+    cheap = _hyper.select(pts, objective="force", energy_weight=0.0, tolerance=0.03, max_param_ratio=0.5)
+    rich = _hyper.select(pts, objective="force", energy_weight=0.0, tolerance=0.03, max_param_ratio=0.5, prefer="richer")
+    assert cheap["chosen"]["n_params"] == 40
+    assert rich["chosen"]["n_params"] == 600
+    assert "richer" in rich["reason"] or rich["chosen"] is rich["best"]

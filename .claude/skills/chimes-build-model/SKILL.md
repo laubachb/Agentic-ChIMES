@@ -11,15 +11,18 @@ Order of stages (each takes `--output-dir`; use one directory per experiment):
    is required for everything downstream). `fps`/`random` to subsample.
 2. `fm-setup-gen` — writes `fm_setup.in`. **Read the file it produced**
    before continuing; it fully determines the basis.
-3. `model-build` — amat-build + solve in one call. Or `amat-build` then
+3. `model-build` — amat-build + solve in one call (`--weights-preset` for
+   published fitting weights; `weights` stage for custom or AL-decay schemes). Or `amat-build` then
    `solve` separately when you want to reuse one A-matrix across solvers.
 4. `evaluate --params ... --holdout-xyzf ...` — holdout force/energy RMSE
    (kcal/mol/Angstrom, kcal/mol).
 5. `sweep` — grid over `order_2b/3b/4b`, `default_s_minim/s_maxim`,
    `alpha`, `algorithm`. Reports a table and `best_by`; it does not pick.
 6. `lammps-run` — single-point/MD check inside the real integrator. Should
-   agree with `evaluate` to ~1e-3; disagreement means a units or cutoff bug,
-   not a model problem.
+   agree with `evaluate` to ~1e-3 (thin cells are replicated automatically);
+   disagreement means a units or cutoff bug, not a model problem.
+7. `md-check` — short MD of several candidates: stability, close contacts,
+   RDF vs a reference, frames for active learning.
 
 Always run `<stage> --describe` for exact flags.
 
@@ -35,7 +38,11 @@ Always run `<stage> --describe` for exact flags.
 - **Orders:** start at 12/7/3 (2b/3b/4b). Sweep 2b first, then 3b with 2b
   fixed; add 4b only if 3b plateaus and the basis size is affordable — 4b
   cost grows steeply.
-- **`alpha`:** 1e-5 for normalized fits, 1e-2 for un-normalized.
+- **`alpha`:** the chimes_lsq docs suggest 1e-5 for normalized and 1e-2 for
+  un-normalized fits. `hyper-search` uses 1e-5 with raw `lassolars`, which
+  held up on Cu-Zr (column scales are tiny for 3-/4-body terms, so a small α
+  still regularizes them). Compare at least two α values with `sweep` before
+  settling; never compare bases fitted at different α.
 - **Algorithm:** `svd`/`lassolars`/`ridge` run locally and suit small or
   medium bases. `dlars`/`dlasso` are for large bases and need
   `--machine`; load `chimes-hpc-jobs` first.

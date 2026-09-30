@@ -77,15 +77,17 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
   r_out(1 − f_O). It is the recommended choice for models with more than
   3-body terms (chimes_lsq docs: `# FCUTTYP # TERSOFF <f_O>`, f_O typically
   0.25-0.5). Published values: f_O = 0.5 **[AL20, HN20]**, 0.75 **[C24]**.
-- The toolkit's search uses CUBIC. On Cu-Zr this left many-body columns
-  1e-3 (3-body) to 1e-7 (4-body) of the 2-body scale, which is the effect
-  **[AL20]** describes. Prefer TERSOFF when 3-/4-body terms matter.
+- `hyper-search` defaults to CUBIC (`--smoothing 'TERSOFF 0.5'` switches).
+  On Cu-Zr, CUBIC left many-body columns 1e-3 (3-body) to 1e-7 (4-body) of
+  the 2-body scale, which is the effect **[AL20]** describes.
 
 ## Polynomial orders and model selection
 
 - Choose the smallest order (and cutoff, λ) that gives a converged result
   **[C17]**. This matches the toolkit's "cheapest statistically tied model"
   rule.
+- Toolkit: `md-check` runs this MD comparison. `hyper-search --prefer richer`
+  implements "err toward complexity" (next points).
 - Holdout cross-validation over 2-body {4..28} × 3-body {0..14}: the error
   kept falling to the largest orders, but MD showed overfitting
   (over-/under-structured RDFs, singularities at 3-body 10) and underfitting
@@ -136,6 +138,10 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
 - During active learning, decay weights as w = n_cycles / I (I = current
   cycle), so early unphysical frames cannot pull the fit away from the
   ground-truth data **[C24, HT25]**.
+- Toolkit: the `weights` stage implements these as presets (`al_driver`,
+  `lindsey2020`, `carbon2_large`, `hierarchical2026`) plus al_driver's
+  methods A-G and `--decay-cycles`. `model-build` and `hyper-search` take
+  `--weights-preset`.
 
 ## Training data
 

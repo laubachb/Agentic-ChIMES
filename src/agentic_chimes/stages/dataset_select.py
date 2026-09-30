@@ -15,6 +15,17 @@ present, e.g. "C-only" vs "C+H mixed") and splits proportionally within
 each class -- the same "mixed/pure" stratification pattern used in prior
 HEA/binary-alloy studies with this toolchain, generalized off any
 element-set composition, not just binary systems.
+
+By default (`split_by: group`) it holds out whole *groups* of correlated
+frames rather than single frames. Consecutive steps of one relaxation or
+closely spaced MD frames are near-copies of each other; splitting them
+across train and holdout leaks the answer into the test and overstates
+accuracy. Two frames are linked when they have the same atoms in the same
+order, cells within `group_cell_tol` and a minimum-image RMS displacement
+below `group_rmsd` Å; groups are the connected chains of links (checked
+within a window of nearby frames, since trajectories are stored in order).
+A composition class that is a single group cannot be split by group; its
+last frames (a contiguous block) are held out instead, and a note says so.
 """
 
 from __future__ import annotations
@@ -22,6 +33,8 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
+
+import numpy as np
 
 from ..io import xyzf as xyzf_io
 
@@ -37,6 +50,9 @@ SCHEMA = {
         "holdout_fraction": {"type": ["number", "null"], "description": "Fraction of the pool held out; alternative to n_select."},
         "seed": {"type": "integer", "default": 42},
         "descriptor": {"type": "string", "enum": ["composition", "energy", "composition_energy"], "default": "composition", "description": "fps only."},
+        "split_by": {"type": "string", "enum": ["group", "frame"], "default": "group", "description": "stratified_holdout only. group = hold out whole groups of correlated frames (relaxation paths, closely spaced MD frames) so the holdout is not a near-copy of training data; frame = independent frames (the old behavior)."},
+        "group_rmsd": {"type": "number", "default": 0.3, "description": "Å. Frames with identical atom order, matching cells and a minimum-image RMS displacement below this are linked into one group."},
+        "group_cell_tol": {"type": "number", "default": 0.03, "description": "Relative tolerance on cell vectors for linking frames."},
     },
 }
 
@@ -48,6 +64,9 @@ def add_arguments(parser) -> None:
     parser.add_argument("--holdout-fraction", dest="holdout_fraction", type=float, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--descriptor", choices=["composition", "energy", "composition_energy"], default="composition")
+    parser.add_argument("--split-by", dest="split_by", choices=["group", "frame"], default="group")
+    parser.add_argument("--group-rmsd", dest="group_rmsd", type=float, default=0.3)
+    parser.add_argument("--group-cell-tol", dest="group_cell_tol", type=float, default=0.03)
 
 
 def _resolve_n_select(n_pool: int, n_select, holdout_fraction) -> int:
@@ -169,6 +188,85 @@ def _stratified_split(frames, n_select: int, seed: int) -> tuple:
     return sorted(selected_set), [i for i in range(n_pool) if i not in selected_set]
 
 
+def _cell(frame) -> np.ndarray:
+    box = np.asarray(frame.box, dtype=float)
+    return box if box.ndim == 2 else np.diag(box)
+
+
+def correlated_groups(frames, *, rmsd: float = 0.3, cell_tol: float = 0.03, window: int = 100) -> list:
+    """Group id per frame: connected chains of near-identical frames."""
+    parent = list(range(len(frames)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    buckets: dict = {}
+    for i, fr in enumerate(frames):
+        buckets.setdefault(tuple(fr.symbols), []).append(i)
+    for idxs in buckets.values():
+        pos = {i: np.asarray(frames[i].positions, dtype=float) for i in idxs}
+        cells = {i: _cell(frames[i]) for i in idxs}
+        for a, i in enumerate(idxs):
+            ci = cells[i]
+            inv = np.linalg.inv(ci)
+            scale = np.linalg.norm(ci, axis=1)
+            for j in idxs[a + 1: a + 1 + window]:
+                if find(i) == find(j):
+                    continue
+                if np.any(np.linalg.norm(cells[j] - ci, axis=1) > cell_tol * scale):
+                    continue
+                frac = (pos[j] - pos[i]) @ inv
+                frac -= np.round(frac)
+                d = frac @ ci
+                if np.sqrt(np.mean(np.sum(d * d, axis=1))) < rmsd:
+                    parent[find(j)] = find(i)
+    roots: dict = {}
+    return [roots.setdefault(find(i), len(roots)) for i in range(len(frames))]
+
+
+def _group_split(frames, n_select: int, seed: int, *, rmsd: float, cell_tol: float) -> tuple:
+    """Stratified by composition class; whole correlated groups go to the holdout."""
+    rng = random.Random(seed)
+    groups = correlated_groups(frames, rmsd=rmsd, cell_tol=cell_tol)
+    n_pool = len(frames)
+    n_hold_target = n_pool - n_select
+    by_class: dict = {}
+    for i, fr in enumerate(frames):
+        by_class.setdefault(_composition_class(fr), {}).setdefault(groups[i], []).append(i)
+
+    holdout, notes = set(), []
+    for cls, members in by_class.items():
+        n_cls = sum(len(v) for v in members.values())
+        target = round(n_cls * n_hold_target / n_pool)
+        if target == 0:
+            continue
+        gids = list(members)
+        rng.shuffle(gids)
+        taken = 0
+        if len(gids) > 1:
+            for g in gids:
+                size = len(members[g])
+                if taken + size <= target + max(1, target // 4):
+                    holdout.update(members[g])
+                    taken += size
+                if taken >= target:
+                    break
+        if taken < target // 2:
+            # one (or a few very large) groups: hold out a contiguous tail block of the largest one
+            big = max(gids, key=lambda g: len(members[g]))
+            block = [i for i in members[big] if i not in holdout][-(target - taken):]
+            holdout.update(block)
+            taken += len(block)
+            notes.append(f"class {'-'.join(cls)}: frames are one correlated group (e.g. a single trajectory); held out its last "
+                         f"{len(block)} frames as a contiguous block, which is less correlated with training than random frames")
+    selected = [i for i in range(n_pool) if i not in holdout]
+    info = {"n_groups": len(set(groups)), "largest_group": max(groups.count(g) for g in set(groups)), "notes": notes}
+    return selected, sorted(holdout), info
+
+
 def run(args) -> dict:
     if not getattr(args, "frames", None):
         raise ValueError("dataset-select requires --frames (or 'frames' in --json-in)")
@@ -194,7 +292,13 @@ def run(args) -> dict:
         selected_indices = sorted(rng.sample(range(n_pool), n_select))
         holdout_indices = [i for i in range(n_pool) if i not in set(selected_indices)]
     else:  # stratified_holdout
-        selected_indices, holdout_indices = _stratified_split(frames, n_select, seed)
+        split_by = getattr(args, "split_by", "group") or "group"
+        if split_by == "group":
+            selected_indices, holdout_indices, group_info = _group_split(
+                frames, n_select, seed, rmsd=getattr(args, "group_rmsd", 0.3) or 0.3,
+                cell_tol=getattr(args, "group_cell_tol", 0.03) or 0.03)
+        else:
+            selected_indices, holdout_indices = _stratified_split(frames, n_select, seed)
 
     out_dir = Path(getattr(args, "output_dir", None) or ".")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -207,7 +311,11 @@ def run(args) -> dict:
     indices_path = out_dir / "indices.json"
     indices_path.write_text(json.dumps({"selected_indices": selected_indices, "holdout_indices": holdout_indices}, indent=2))
 
+    extra = {}
+    if method == "stratified_holdout":
+        extra = {"split_by": split_by, **({"groups": group_info} if split_by == "group" else {})}
     return {
+        **extra,
         "method": method,
         "n_pool": n_pool,
         "n_selected": len(selected_indices),

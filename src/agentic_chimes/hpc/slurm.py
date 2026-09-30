@@ -1,20 +1,28 @@
-"""Thin wrapper around al_driver's existing, working Slurm submission
-primitive (`codes/al_driver-LLfork/src/helpers.py:create_and_launch_job` /
-`wait_for_job(s)`), imported from its vendored path rather than copied.
+"""Slurm submission for every stage.
 
-Added value over calling that module directly:
+One renderer (`hpc.dry_run.render_sbatch_script`) writes the job script in
+both modes, so a `--dry-run` preview is byte-for-byte the script a real
+submission sends to `sbatch`. (Real submissions used to go through
+al_driver's `helpers.create_and_launch_job`, which writes its own, different
+script: the preview showed a `conda activate` the real job never ran.)
+al_driver's helpers are still used to *wait* for jobs.
+
+Added value over calling sbatch directly:
   1. `ntasks_per_node` always defaults from the machine profile (closes the
      Dane "-N 1 gives 1 CPU" gotcha permanently, not as an opt-in flag).
   2. Logical queue names ("debug"/"batch") translate to each machine's real
-     partition string via `profile.queue_for`, so callers never hardcode
-     "pdebug" vs "skx-dev".
-  3. `dry_run=True` renders the script (hpc.dry_run) without calling sbatch.
+     partition string via `profile.queue_for`.
+  3. Jobs run the Python interpreter that submitted them (its bin dir is put
+     first on PATH), so login-node and compute-node environments match.
+  4. Job directories on node-local storage (/tmp, ...) are refused: compute
+     nodes cannot see them, and the job would "complete" with no output.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -90,18 +98,19 @@ def submit_job(
     job_file_path = work_dir / job_file
     partition = profile.queue_for(queue)
 
+    check_shared_dir(work_dir)
+    rendered = _dry_run.render_sbatch_script(
+        profile,
+        job_name=job_name,
+        commands=commands,
+        nodes=nodes,
+        ntasks_per_node=ntasks_per_node,
+        walltime_hours=walltime_hours,
+        queue=queue,
+        email=email,
+    )
+    job_file_path.write_text(rendered.script)
     if dry_run:
-        rendered = _dry_run.render_sbatch_script(
-            profile,
-            job_name=job_name,
-            commands=commands,
-            nodes=nodes,
-            ntasks_per_node=ntasks_per_node,
-            walltime_hours=walltime_hours,
-            queue=queue,
-            email=email,
-        )
-        job_file_path.write_text(rendered.script)
         return JobHandle(
             job_id=None,
             job_name=job_name,
@@ -112,22 +121,7 @@ def submit_job(
             queue=partition,
         )
 
-    helpers = _al_driver_helpers()
-    with _chdir(work_dir):
-        job_id = helpers.create_and_launch_job(
-            commands,
-            job_name=job_name,
-            job_nodes=str(nodes),
-            job_ppn=str(ntasks_per_node),
-            job_walltime=_dry_run.hours_to_slurm_time(walltime_hours),
-            job_queue=partition,
-            job_account=profile.account,
-            job_system=profile.job_system,
-            job_file=job_file,
-            job_email=email,
-            job_modules=" ".join(profile.modules),
-        )
-
+    job_id = _launch(profile, job_file_path)
     return JobHandle(
         job_id=job_id,
         job_name=job_name,
@@ -137,6 +131,43 @@ def submit_job(
         machine=profile.name,
         queue=partition,
     )
+
+
+_NODE_LOCAL = ("/tmp", "/var/tmp", "/dev/shm")
+
+
+def check_shared_dir(work_dir) -> None:
+    """Refuse job directories on node-local storage. Compute nodes cannot see
+    a login node's /tmp, so such a job reports COMPLETED and writes nothing
+    the caller can read. Tests set CHIMES_AGENT_ALLOW_LOCAL_JOB_DIRS=1."""
+    if os.environ.get("CHIMES_AGENT_ALLOW_LOCAL_JOB_DIRS") == "1":
+        return
+    path = str(Path(work_dir).resolve())
+    local = list(_NODE_LOCAL)
+    if os.environ.get("TMPDIR"):
+        local.append(str(Path(os.environ["TMPDIR"]).resolve()))
+    for root in local:
+        if path == root or path.startswith(root.rstrip("/") + "/"):
+            raise ValueError(
+                f"job directory {path} is on node-local storage ({root}); compute nodes cannot see it and the job "
+                "would finish with no output. Use a shared filesystem, e.g. the machine profile's scratch_root."
+            )
+
+
+def _launch(profile, job_file: Path) -> str:
+    """sbatch (or qsub) the rendered file from its own directory; return the job id."""
+    torque = profile.job_system == "torque"
+    cmd = ["qsub" if torque else "sbatch", job_file.name]
+    proc = subprocess.run(cmd, cwd=job_file.parent, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"{cmd[0]} failed (exit {proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}")
+    out = proc.stdout.strip()
+    m = re.search(r"Submitted batch job (\d+)", out) if not torque else None
+    if m:
+        return m.group(1)
+    if torque and out:
+        return out.split()[0]
+    raise RuntimeError(f"could not parse a job id from {cmd[0]} output: {out!r}")
 
 
 def poll_job(profile, job_handle: JobHandle, *, verbose: bool = True) -> None:

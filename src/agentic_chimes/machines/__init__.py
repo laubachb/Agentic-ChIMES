@@ -8,6 +8,8 @@ point `--hpc /path/to/my_cluster.yaml` at a file following the same schema.
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -50,9 +52,25 @@ class MachineProfile:
 _REQUIRED_KEYS = ("name", "job_system", "launcher", "account", "hosttype", "partitions", "default_ntasks_per_node")
 
 
+_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _expand(value):
+    """Expand ${VAR} and ${VAR:-default} in every string of a profile, so
+    shipped profiles carry no personal accounts or paths (an unset VAR with
+    no default becomes "")."""
+    if isinstance(value, str):
+        return _VAR.sub(lambda m: os.environ.get(m.group(1)) or (m.group(2) or ""), value)
+    if isinstance(value, list):
+        return [_expand(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _expand(v) for k, v in value.items()}
+    return value
+
+
 def _load_yaml(path: Path) -> MachineProfile:
     with open(path) as f:
-        data = yaml.safe_load(f)
+        data = _expand(yaml.safe_load(f))
     missing = [k for k in _REQUIRED_KEYS if k not in data]
     if missing:
         raise ValueError(f"machine profile {path} is missing required key(s): {missing}")

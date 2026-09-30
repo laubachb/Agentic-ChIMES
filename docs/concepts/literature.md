@@ -43,15 +43,15 @@ each, and where it departs from them (usually a known gap, listed in the
 
 ## Where the toolkit departs (and what to do)
 
-| Topic | Literature | Toolkit today | What to do |
+| Topic | Literature | Toolkit | What to do |
 |---|---|---|---|
-| Smoothing | TERSOFF (f_O 0.5-0.75) for models with more than 3-body terms, because the cubic form shrinks many-body terms | CUBIC by default | `hyper-search --smoothing 'TERSOFF 0.5'`; `fm-setup-gen --fcuttyp` |
-| 3-body cutoffs | may differ per pair (water: each pair at its own third shell) | one global 3-body cutoff | edit `fm_setup.in` (`SPECIAL 3B S_MAXIM: SPECIFIC`) and compare with `sweep` |
-| Model selection | holdout CV, then MD against DFT for the top candidates | holdout only | run short MD (`lammps-run`) on the tied candidates before finalizing |
-| Complexity before active learning | err toward richer models, prune after the data is final | cheapest tied model | for ALC-0 models, prefer the richer tied candidate |
-| Fitting weights | forces 1, energies 0.3-5, stresses 100; AL frames decayed as n/I | uniform (`solve --weights` takes a file) | build a per-row weight file by hand |
+| Smoothing | TERSOFF (f_O 0.5-0.75) for models with more than 3-body terms, because the cubic form shrinks many-body terms | CUBIC by default; `--smoothing 'TERSOFF 0.5'` available | see the Cu-Zr comparison in [hyper-search](../commands/hyper-search.md) |
+| 3-body cutoffs | may differ per pair (water: each pair at its own third shell) | one global 3-body cutoff in the search | edit `fm_setup.in` (`SPECIAL 3B S_MAXIM: SPECIFIC`) and compare with `sweep` |
+| Model selection | holdout CV, then MD against DFT for the top candidates | holdout search + [md-check](../commands/md-check.md) | run `md-check` on the tied finalists with a DFT reference |
+| Complexity before active learning | err toward richer models, prune after the data is final | `hyper-search --prefer richer` | use it for ALC-0 models |
+| Fitting weights | forces 1, energies 0.3-5, stresses 100; AL frames decayed as n/I | [weights](../commands/weights.md) presets + al_driver methods + decay | pick a preset; default is still uniform |
 | Stresses | needed for density and pressure | not fitted from open data | QE relabel with stresses; `fitstrs` in `fm-setup-gen` |
-| Validation | RDF, EOS, diffusion, spectra, speciation vs DFT | MD stability and energy drift | compare RDFs by hand; see `chimes-literature` "Validation" |
+| Validation | RDF, EOS, diffusion, spectra, speciation vs DFT | `md-check`: stability, close contacts, RDF vs reference | EOS, diffusion by hand |
 | Multi-element fitting | hierarchical element blocks (al_driver 2.0) | not exposed | use al_driver directly |
 | Coverage / stopping AL | cluster-graph fingerprints | not wrapped | chimes_calculator `chimesFF/src/FP` |
 

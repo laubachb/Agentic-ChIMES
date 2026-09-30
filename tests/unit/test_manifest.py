@@ -56,3 +56,30 @@ def test_different_inputs_allowed_with_force():
 
         decision, _ = _manifest.begin(d, "stage-a", {"x": 2}, force=True)
         assert decision == "run"
+
+
+def test_changed_input_file_is_detected(tmp_path):
+    data = tmp_path / "train.xyzf"
+    data.write_text("frame 1\n")
+    out = tmp_path / "run"
+    inputs = {"train_xyzf": str(data), "order": 12}
+    _manifest.begin(out, "stage-a", inputs)
+    _manifest.finish(out, "stage-a", inputs, {"out": "a"})
+    assert _manifest.begin(out, "stage-a", inputs)[0] == "short_circuit"
+
+    data.write_text("frame 1\nframe 2 (regenerated in place)\n")
+    with pytest.raises(_manifest.InputMismatch, match="train.xyzf"):
+        _manifest.begin(out, "stage-a", inputs)
+    assert _manifest.begin(out, "stage-a", inputs, force=True)[0] == "run"
+
+
+def test_legacy_manifest_without_file_fingerprints_still_short_circuits(tmp_path):
+    import hashlib
+    import json
+
+    inputs = {"x": 1}
+    legacy = hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()
+    (tmp_path / ".manifest-stage-a.json").write_text(json.dumps(
+        {"stage": "stage-a", "input_hash": legacy, "status": "done", "outputs": {"out": "a"}}))
+    decision, prior = _manifest.begin(tmp_path, "stage-a", inputs)
+    assert decision == "short_circuit" and prior["outputs"] == {"out": "a"}

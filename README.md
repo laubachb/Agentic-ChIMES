@@ -59,7 +59,7 @@ repeated by hand.
 git clone https://github.com/laubachb/Agentic-ChIMES.git && cd Agentic-ChIMES
 pip install -e ".[data,al-select]"          # the chimes-agent CLI + open-data and AL extras
 chimes-agent setup --machine dane --component all   # clones the ChIMES forks into codes/ and builds
-chimes-agent setup --status                          # chimes_lsq, chimes_calculator, LAMMPS, Quantum ESPRESSO
+chimes-agent doctor --machine dane                   # checks components, numerics, profile (set CHIMES_ACCOUNT first)
 ```
 
 Built-in machine profiles: `dane` (LLNL LC), `stampede3` (TACC). For another
@@ -136,10 +136,10 @@ A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
 |---|---|
 | Study | `study` (create / register / status), `usage` (CPU-hours), `study-report` |
 | Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `dataset-select`, `qe-relabel` |
-| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `model-build`, `sweep`, `auto-build`, `evaluate` |
+| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `model-build`, `sweep`, `auto-build`, `evaluate` |
 | Active learning | `al-select`, `al-run` |
-| MD, performance, deployment | `lammps-run`, `benchmark`, `deploy` |
-| Infrastructure | `setup`, `submit` |
+| MD, performance, deployment | `lammps-run`, `md-check`, `benchmark`, `deploy` |
+| Infrastructure | `setup`, `doctor`, `submit` |
 
 Reference for each: [docs/commands/](docs/commands/index.md).
 
@@ -151,10 +151,14 @@ Reference for each: [docs/commands/](docs/commands/index.md).
   its own loop.
 - Open data comes from ColabFit on Hugging Face; local DFT output (VASP,
   QE, extxyz, anything ASE reads) is supported directly.
-- `lammps-run` and `benchmark` use orthorhombic cells; triclinic training
-  data is fine for fitting.
-- Not yet agents: MD candidate generation and active-learning orchestration
-  (the `chimes-active-learning` skill and `al-run` cover it by hand).
+- LAMMPS stages handle triclinic cells. Only `auto-build`'s cutoff
+  derivation is orthorhombic-only.
+- Not yet agents: MD validation and active-learning orchestration. The
+  stages exist (`md-check` validates candidates and harvests close-contact
+  frames; `al-select`/`al-run`), driven by the `chimes-active-learning`
+  skill.
+- Run `chimes-agent doctor --machine <m>` after setup; set `CHIMES_ACCOUNT`
+  for the machine profiles.
 
 Known gaps, bugs and the roadmap:
 [docs/development/assessment.md](docs/development/assessment.md). The

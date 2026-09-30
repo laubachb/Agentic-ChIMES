@@ -17,9 +17,15 @@ pip install -e ".[data,al-select]"
 ## 2. Build the ChIMES toolchain
 
 ```bash
-chimes-agent setup --machine dane --component all
-chimes-agent setup --status
+export CHIMES_ACCOUNT=<your Slurm bank or allocation>   # read by the machine profiles
+chimes-agent setup --machine dane --component all      # or --machine ./my_cluster.yaml
+chimes-agent doctor --machine dane                     # verify: components, numerics, profile
 ```
+
+`doctor` runs one real LAMMPS and one calculator evaluation against a
+published reference, and checks the machine profile (account, shared scratch,
+partitions). Fix anything it marks `fail` before starting a study. See
+[machine profiles](concepts/machine_profiles.md) for other clusters.
 
 This clones the three upstream ChIMES repositories (`al_driver`,
 `chimes_lsq`, `chimes_calculator` forks) into `codes/` at pinned commits

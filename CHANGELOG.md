@@ -1,6 +1,52 @@
 # Changelog
 
-## Unreleased — literature grounding and assessment
+## Unreleased — robustness and accuracy fixes from the assessment
+
+Robustness:
+
+- **Dry run = real submission.** One renderer writes the sbatch script in
+  both modes, and real jobs `sbatch` that exact file (previously they went
+  through al_driver's `create_and_launch_job`, whose script lacked the
+  previewed `conda activate`). Jobs run the submitting interpreter (its bin
+  dir first on PATH); `conda_env` is optional and guarded.
+- **Node-local job directories refused** (`/tmp`, `/var/tmp`, `/dev/shm`,
+  `$TMPDIR`), including in dry runs.
+- **Profiles expand `${VAR}` / `${VAR:-default}`**; shipped profiles use
+  `CHIMES_ACCOUNT` (and `$SCRATCH` on stampede3) instead of one user's
+  account and paths. `setup --machine` accepts a profile path.
+- **Stale results closed:** stage manifests fingerprint input files (size +
+  mtime) and name the changed file; `hyper-search` point caches are reused
+  only when data, solver, alpha and masses match. Old manifests still
+  short-circuit on their path-only hash.
+- **`--json-in` validated** against the stage schema (unknown keys, wrong
+  types); stages that submit nothing reject `--dry-run`.
+- **Approval gate hook** (`.claude/hooks/approval_gate.py`): asks before
+  submissions in any form (module invocation, `machine` inside a JSON file);
+  settings.json ask rules mirrored for `python3 -m agentic_chimes.cli`.
+
+Accuracy:
+
+- **`lammps-run` triclinic support** (restricted-triclinic box, forces
+  rotated back) and **automatic replication of thin cells**: chimesFF in
+  LAMMPS under-counts energy on cells thinner than 2x the cutoff (30-50
+  kcal/mol on 2-atom MatPES cells); replicated results match `evaluate`
+  to 1e-4.
+- **`md-check`** (new stage): short NVT MD of candidate models, locally or
+  as one Slurm job; stability (runaway, energy jumps, lost atoms),
+  equilibration, close contacts vs inner cutoffs, partial RDFs vs a
+  reference, and `harvest.xyzf` (<=20 close-contact + <=20 other frames per
+  run) for active learning.
+- **`weights`** (new stage): al_driver's weight methods A-G on
+  `b-labeled.txt`, published presets (`al_driver`, `lindsey2020`,
+  `carbon2_large`, `hierarchical2026`) and n/I active-learning decay;
+  `model-build`/`hyper-search --weights-preset`.
+- **`hyper-search --prefer richer`**: take the richest statistically tied
+  model (and skip exclusions) for models headed into active learning.
+- **Group-aware holdout split** (`dataset-select`/`data-curate
+  --split-by group`, default): correlated frames (relaxation paths, close MD
+  frames) are held out together.
+
+## Literature grounding and assessment
 
 - **ChIMES literature integrated.** The `chimes-literature` skill distills
   8 ChIMES papers into decision guidance with citations: cutoffs, λ,

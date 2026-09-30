@@ -14,6 +14,7 @@ from .. import hpc, machines
 
 NAME = "submit"
 SUMMARY = "Submit/status/cancel a Slurm job, or --dry-run to preview the sbatch script."
+SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
     "properties": {

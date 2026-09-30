@@ -36,6 +36,7 @@ from ._compose import ns
 
 NAME = "auto-build"
 SUMMARY = "Unlabeled configs -> QE labeling -> data-driven cutoffs -> order sweep -> optimal model (-> optional AL stabilization)."
+SUPPORTS_DRY_RUN = True
 
 DEFAULT_ORDER_GRID = {"2": [10, 12, 14], "3": [5, 7, 9], "4": [None, 2, 3]}
 

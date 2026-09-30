@@ -7,7 +7,8 @@
 name: dane
 job_system: slurm
 launcher: srun
-account: pls2
+# Slurm bank: set CHIMES_ACCOUNT to your own (pls2 is only the fallback).
+account: ${CHIMES_ACCOUNT:-pls2}
 # hosttype selects which codes/*/modfiles/<hosttype>.mod the vendored forks'
 # own install.sh scripts source (see `chimes-agent setup`).
 hosttype: LLNL-LC
@@ -20,7 +21,7 @@ poll_interval_s: 60
 modules:
   - intel-classic/2021.6.0
   - mvapich2/2.3.7
-conda_env: mat_mcts
+# conda_env: <name>   # optional; jobs already run the interpreter that submitted them
 filesystem:
   scratch_root: /p/lustre2/${USER}
   # lustre2 has a FILE-COUNT quota (~1.05M soft), not a space quota - never

@@ -39,6 +39,7 @@ from .lammps_run import _render_input
 
 NAME = "benchmark"
 SUMMARY = "Strong/weak scaling of a ChIMES model in LAMMPS (Slurm submit, then --collect) -> cost model for compute requests."
+SUPPORTS_DRY_RUN = True
 DEFAULT_RANKS = [1, 2, 4, 8, 16, 28, 56, 112]
 CUBIC_PROTOTYPES = ("fcc", "bcc", "cesiumchloride", "diamond", "rocksalt", "zincblende", "sc")
 SCHEMA = {

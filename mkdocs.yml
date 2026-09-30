@@ -82,6 +82,7 @@ nav:
           - fm-setup-gen: commands/fm-setup-gen.md
           - amat-build: commands/amat-build.md
           - solve: commands/solve.md
+          - weights: commands/weights.md
           - model-build: commands/model-build.md
           - sweep: commands/sweep.md
           - auto-build: commands/auto-build.md
@@ -91,10 +92,12 @@ nav:
           - al-run: commands/al-run.md
       - MD, performance, deployment:
           - lammps-run: commands/lammps-run.md
+          - md-check: commands/md-check.md
           - benchmark: commands/benchmark.md
           - deploy: commands/deploy.md
       - Infrastructure:
           - setup: commands/setup.md
+          - doctor: commands/doctor.md
           - submit: commands/submit.md
   - Concepts:
       - concepts/stages_and_contracts.md

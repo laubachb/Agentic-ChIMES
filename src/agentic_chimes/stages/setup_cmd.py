@@ -35,8 +35,8 @@ def add_arguments(parser) -> None:
     )
     parser.add_argument(
         "--machine",
-        choices=available_profiles(),
-        help="Machine profile to build for (required unless --status).",
+        help=f"Machine profile to build for: a built-in name ({', '.join(available_profiles())}) or a path to "
+        "your own profile YAML (required unless --status).",
     )
     parser.add_argument("--qe-version", dest="qe_version", default=None, help="Override the pinned QE release tag.")
     parser.add_argument(

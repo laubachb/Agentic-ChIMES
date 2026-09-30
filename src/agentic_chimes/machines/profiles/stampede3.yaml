@@ -6,7 +6,8 @@
 name: stampede3
 job_system: TACC
 launcher: ibrun
-account: TG-CHM250118
+# Set CHIMES_ACCOUNT to your TACC allocation (e.g. TG-XXX000000).
+account: ${CHIMES_ACCOUNT}
 hosttype: UT-TACC
 partitions:
   debug: skx-dev
@@ -18,7 +19,7 @@ modules:
   - intel/24.0
   - impi/21.11
 filesystem:
-  scratch_root: /work2/09982/blaubach/stampede3
+  scratch_root: ${SCRATCH}
   max_small_files_per_dir: 5000
   bulk_archive_root: null
 qe:

@@ -15,6 +15,22 @@ should agree on forces/energy for a given configuration. Validated in
 `evaluate`/`test_evaluate.py` is validated against: LAMMPS, the ctypes
 wrapper, and the standalone `chimescalc` binary all agree to ~1e-3.
 
+## Triclinic cells and thin cells
+
+- **Triclinic frames are supported.** They are written as a LAMMPS
+  restricted-triclinic box: a rigid rotation, with tilts reduced into LAMMPS'
+  allowed range. Single-point forces are rotated back to the frame's
+  original orientation. The test suite checks a sheared, rotated
+  description of the reference configuration against the published energy
+  and forces.
+- **Thin cells are replicated automatically** (`--no-replicate` to turn
+  off). chimesFF in LAMMPS gets forces right on cells thinner than twice
+  the model's outer cutoff but under-counts the energy. On 2-atom MatPES
+  Cu-Zr cells it was 30-50 kcal/mol off; once replicated, it matched
+  `evaluate` to 1e-4 kcal/mol. The result reports `n_copies` and
+  `natoms_simulated`. Single-point energy is per original cell (÷ copies),
+  and forces are the first copy's. MD runs on the supercell.
+
 ## Usage
 
 ```bash
@@ -51,6 +67,7 @@ pair/cluster types.
 - `--temperature`, `--nsteps`, `--timestep` (fs), `--md-seed` (mode=md only)
 - `--nprocs N` — runs via `mpirun -n N` if >1, direct exec otherwise
 - `--lammps-bin PATH` — override the resolved binary
+- `--no-replicate` — do not replicate thin cells (energies will be wrong on them)
 
 ## Output (single_point)
 

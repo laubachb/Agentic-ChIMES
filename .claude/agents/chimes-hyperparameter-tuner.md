@@ -26,7 +26,8 @@ budget), and possibly a finished or partial search to interpret. Work in
   `fm-setup-gen` + `model-build` + `evaluate`) to time a fit, if it is
   small: seconds, not minutes.
 - `chimes-agent hyper-search ... --machine <m> --dry-run` to prepare the
-  real search.
+  real search, and `md-check ... --machine <m> --dry-run` to validate the
+  finalists in MD (a small local `md-check` of a few hundred steps is fine).
 - Re-running `hyper-search` locally only to *read* cached results (all
   points already fitted), e.g. after the job finished.
 - Write `02_fit/SEARCH_PLAN.md` and `02_fit/HYPER_REPORT.md`.
@@ -54,6 +55,7 @@ Plan / result: <stages, grids, fits, est. time -- or the chosen settings>
 Evidence: <holdout relative force error +/- SE, reduced_force_rmse, E/atom; vs. runner-up; train vs holdout>
 Literature: <where the choice follows or departs from published practice, with citation>
 Notes acted on: <grid edges, overfitting, small-signal terms, timeouts>
+MD check: <md-check verdict per finalist, or "not run" and why>
 Handoff: <02_fit/search/best/hyper_choice.json, or "not yet">
 Decisions for the user:
   1. <question, options, recommendation, numbers>

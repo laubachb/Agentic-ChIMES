@@ -71,13 +71,40 @@ def test_write_lammps_data_structure(tmp_path):
     assert rows[2][:2] == ["3", "1"]
 
 
-def test_write_lammps_data_rejects_non_ortho(tmp_path):
+def _sheared_rotated(cell, positions, seed=3):
+    """Same periodic structure, described by different lattice vectors (b+a,
+    c-a+b) and rigidly rotated: physically identical to the input."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
+    if np.linalg.det(q) < 0:
+        q[:, 0] *= -1
+    a, b, c = np.asarray(cell, dtype=float)
+    new_cell = np.array([a, b + a, c - a + b]) @ q.T
+    return new_cell, np.asarray(positions, dtype=float) @ q.T, q
+
+
+def test_restricted_triclinic_preserves_the_lattice():
+    import numpy as np
+
+    cell = np.array([[5.0, 0.3, -0.2], [1.7, 4.1, 0.4], [-0.9, 1.1, 6.2]])
+    lx, ly, lz, xy, xz, yz, q, lcell = lammps_data.restricted_triclinic(cell)
+    assert np.allclose(q @ q.T, np.eye(3))
+    assert abs(xy) <= lx / 2 + 1e-9 and abs(xz) <= lx / 2 + 1e-9 and abs(yz) <= ly / 2 + 1e-9
+    assert np.isclose(abs(np.linalg.det(lcell)), abs(np.linalg.det(cell)))
+    # the reduced cell spans the same lattice as the rotated original
+    m = np.linalg.solve(lcell.T, (cell @ q.T).T).T
+    assert np.allclose(m, np.round(m), atol=1e-8)
+
+
+def test_write_lammps_data_triclinic_has_tilt_line(tmp_path):
     frame = xyzf_io.Frame(
         symbols=["C"], positions=[[0, 0, 0]], forces=[[0, 0, 0]],
-        box=[[10, 0, 0], [0, 10, 0], [0, 0, 10]], non_ortho=True,
+        box=[[10, 0, 0], [3, 10, 0], [0, 0, 10]], non_ortho=True,
     )
-    with pytest.raises(ValueError, match="orthorhombic"):
-        lammps_data.write_lammps_data(frame, ["C"], {"C": 12.011}, tmp_path / "x.data")
+    lammps_data.write_lammps_data(frame, ["C"], {"C": 12.011}, tmp_path / "x.data")
+    assert "xy xz yz" in (tmp_path / "x.data").read_text()
 
 
 def test_write_lammps_data_rejects_unknown_element(tmp_path):
@@ -164,3 +191,25 @@ def test_lammps_single_point_matches_published_reference(tmp_path):
     assert f0[0] == pytest.approx(EXPECTED_FORCE_ATOM0[0], abs=1e-2)
     assert f0[1] == pytest.approx(EXPECTED_FORCE_ATOM0[1], abs=1e-2)
     assert f0[2] == pytest.approx(EXPECTED_FORCE_ATOM0[2], abs=1e-2)
+
+
+@pytest.mark.skipif(not _lammps_bin_available(), reason="lammps not built; run `chimes-agent setup --component lammps`")
+def test_lammps_triclinic_single_point_matches_published_reference(tmp_path):
+    """A triclinic, rotated description of the reference configuration must
+    give the same energy and (rotated back) the same forces."""
+    import numpy as np
+    from types import SimpleNamespace
+
+    natoms, box9, symbols, positions = _read_plain_xyz(CONFIG_XYZ)
+    cell, pos, q = _sheared_rotated(np.diag([box9[0], box9[4], box9[8]]), positions)
+    frame = xyzf_io.Frame(symbols=symbols, positions=pos.tolist(), forces=[[0.0, 0.0, 0.0]] * natoms,
+                          box=cell.tolist(), non_ortho=True)
+    path = tmp_path / "tri.xyzf"
+    xyzf_io.write_xyzf([frame], path)
+    args = SimpleNamespace(params=str(PARAMS_TXT), structure_xyzf=str(path), frame_index=0,
+                           elements=["C", "H", "O", "N"], masses=CHON_MASSES, mode="single_point", temperature=300.0,
+                           nsteps=0, timestep=1.0, md_seed=1, lammps_bin=None, nprocs=1, output_dir=str(tmp_path / "run"))
+    result = lammps_run.run(args)
+    assert result["energy_kcal_mol"] == pytest.approx(EXPECTED_ENERGY, abs=1e-3)
+    f0 = np.asarray(result["forces_kcal_mol_ang"][0]) @ q      # back from the test's own rotation
+    assert f0 == pytest.approx(EXPECTED_FORCE_ATOM0, abs=1e-2)
