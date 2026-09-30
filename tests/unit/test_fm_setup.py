@@ -58,3 +58,33 @@ def test_exclude_and_special_blocks_preserved():
     assert len(d2["special_blocks"]) == 1
     assert d2["special_blocks"][0]["mode"] == "SPECIFIC"
     assert len(d2["special_blocks"][0]["rows"]) == 4
+
+
+def test_specific_3b_rows_names_values_and_exclusions():
+    from agentic_chimes.io.fm_setup import specific_3b_rows
+
+    rows = specific_3b_rows(["Cu", "Zr"], {"Cu-Cu": 5.0, "Zr-Cu": 6.33, "Zr-Zr": 5.5})
+    assert rows == [
+        ["CuCuCuCuCuCu", "CuCu", "CuCu", "CuCu", "5", "5", "5"],
+        ["CuCuCuZrCuZr", "CuCu", "CuZr", "CuZr", "5", "6.33", "6.33"],
+        ["CuZrCuZrZrZr", "CuZr", "CuZr", "ZrZr", "6.33", "6.33", "5.5"],
+        ["ZrZrZrZrZrZr", "ZrZr", "ZrZr", "ZrZr", "5.5", "5.5", "5.5"],
+    ]
+    # an excluded triplet type must not get a row (chimesFF maps it to -1)
+    kept = specific_3b_rows(["Cu", "Zr"], {"Cu-Cu": 5.0, "Cu-Zr": 6.33, "Zr-Zr": 5.5}, exclude=[["Zr", "Cu", "Cu"]])
+    assert [r[0] for r in kept] == ["CuCuCuCuCuCu", "CuZrCuZrZrZr", "ZrZrZrZrZrZr"]
+
+
+def test_hierarchical_excludes_round_trip():
+    from agentic_chimes.io import fm_setup
+
+    p = fm_setup.parse(fm_setup.render({
+        "trjfile": "t.xyzf", "nframes": 1, "order2": 6, "order3": 4, "hierarc": True,
+        "atom_types": [{"idx": 1, "symbol": "Cu", "charge": 0.0, "mass": 63.5}, {"idx": 2, "symbol": "Zr", "charge": 0.0, "mass": 91.2}],
+        "pairs": [{"idx": 1, "type1": "Cu", "type2": "Cu", "s_minim": 2.2, "s_maxim": 8.0, "s_delta": 0.01, "morse_lambda": 2.5}],
+        "exclude_1b": [["Cu"], ["Zr"]], "exclude_2b": [["Cu", "Cu"], ["Zr", "Zr"]], "exclude_3b": [["Cu", "Cu", "Cu"]],
+    }))
+    assert p["hierarc"] is True
+    assert p["exclude_1b"] == [["Cu"], ["Zr"]]
+    assert p["exclude_2b"] == [["Cu", "Cu"], ["Zr", "Zr"]]
+    assert p["exclude_3b"] == [["Cu", "Cu", "Cu"]]

@@ -34,6 +34,7 @@ _SINGLE_VALUE_KEYS = {
     "SPLITFI": ("splitfi", "bool"),
     "USENEIG": ("useneig", "bool"),
     "SKPFRMS": ("skpfrms", str),
+    "HIERARC": ("hierarc", "bool"),
 }
 
 
@@ -148,7 +149,7 @@ def parse(text: str) -> dict:
 
         elif line.upper().startswith("EXCLUDE"):
             parts = line.replace(":", " ").split()
-            order = 3 if parts[1].upper().startswith("3") else 4
+            order = int(parts[1][0])  # 1B, 2B, 3B or 4B
             count = int(parts[-1])
             i += 1
             rows = [lines[i + k].split() for k in range(count)]
@@ -217,6 +218,8 @@ def render(p: dict) -> str:
         lines += ["# USENEIG #", f"\t{_bool_str(p['useneig'])}"]
     if "skpfrms" in p:
         lines += ["# SKPFRMS #", f"\t{p['skpfrms']}"]
+    if p.get("hierarc"):
+        lines += ["# HIERARC #", "\ttrue"]
 
     lines += [
         "",
@@ -249,7 +252,7 @@ def render(p: dict) -> str:
 
     lines += ["", "# FCUTTYP #", f"\t{p.get('fcuttyp', 'CUBIC')}", ""]
 
-    for order in (3, 4):
+    for order in (1, 2, 3, 4):
         rows = p.get(f"exclude_{order}b")
         if rows:
             lines.append(f"EXCLUDE {order}B INTERACTION: {len(rows)}")
@@ -268,3 +271,32 @@ def render(p: dict) -> str:
 
     lines += ["# ENDFILE #", ""]
     return "\n".join(lines)
+
+
+def specific_3b_rows(elements: list, pair_cutoffs: dict, exclude=None) -> list:
+    """Rows for `SPECIAL 3B S_MAXIM: SPECIFIC n`: one per triplet type, each
+    pair of the triplet at its own outer cutoff (Lindsey et al., JCTC 15, 436,
+    2019: each pair at its own solvation shell).
+
+    `pair_cutoffs` maps "A-B" (either order) to Angstrom. Triplet names are
+    the three pair names concatenated (ab + ac + bc, pair names in `elements`
+    order), which is one of the permutations chimes_lsq writes to TRIPMAPS
+    and chimesFF looks up. Excluded triplet types are skipped: chimesFF maps
+    them to index -1 and a row for one would index out of bounds."""
+    from itertools import combinations_with_replacement
+
+    def cut(a, b):
+        for key in (f"{a}-{b}", f"{b}-{a}"):
+            if key in pair_cutoffs:
+                return float(pair_cutoffs[key])
+        raise ValueError(f"no 3-body cutoff for pair {a}-{b}")
+
+    excluded = {tuple(sorted(t, key=elements.index)) for t in (exclude or [])}
+    rows = []
+    for a, b, c in combinations_with_replacement(elements, 3):
+        if (a, b, c) in excluded:
+            continue
+        pairs = [(a, b), (a, c), (b, c)]
+        names = ["".join(p) for p in pairs]
+        rows.append(["".join(names)] + names + [f"{cut(*p):g}" for p in pairs])
+    return rows

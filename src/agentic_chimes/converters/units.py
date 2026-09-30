@@ -24,6 +24,24 @@ HARTREE_PER_BOHR_TO_EV_PER_ANG = 51.4221
 # interface example: stress * 6.9479 = GPa).
 CHIMES_STRESS_TO_GPA = 6.9479
 
+# Stresses. ChIMES (xyzf, chimes_lsq, chimes_calculator) uses the *pressure*
+# sign: positive = compressed, P = trace/3. Verified: chimes_calculator's
+# stress equals -dE/dV (kcal/mol/A^3) to 1e-7, and al_driver's vasp2xyzf
+# copies VASP's "in kB" line (pressure sign) with only kbar -> GPa. ASE and
+# ColabFit `cauchy_stress` use the Cauchy sign (tensile positive, eV/A^3), so
+# they are negated on the way in. QE prints the pressure sign in kbar.
+EV_PER_ANG3_TO_GPA = 160.21766208
+KBAR_TO_GPA = 0.1
+
+
+def cauchy_ev_ang3_to_chimes_gpa(sigma_3x3):
+    """3x3 Cauchy stress (eV/A^3, tensile positive) -> ChIMES xyzf
+    [sxx, syy, szz, sxy, sxz, syz] in GPa, pressure sign."""
+    import numpy as np
+
+    s = -np.asarray(sigma_3x3, dtype=float) * EV_PER_ANG3_TO_GPA
+    return [float(s[0, 0]), float(s[1, 1]), float(s[2, 2]), float(s[0, 1]), float(s[0, 2]), float(s[1, 2])]
+
 # Quantum ESPRESSO native units: energies in Rydberg, forces in Ry/bohr
 # (QE's "Ry/au" == Ry/bohr; QE lengths are natively in bohr, so no length
 # conversion is needed for forces -- only the energy-unit half of Ry).

@@ -165,7 +165,7 @@ def _run_normalized(args, algorithm: str, work_dir: Path) -> dict:
         bdir = Path(args.b).resolve().parent
         groups = _solvers.frame_groups(bdir / "b-labeled.txt", bdir / "natoms.txt")
         labels = [ln.split()[0] for ln in (bdir / "b-labeled.txt").read_text().splitlines()]
-        force_rows = np.array([lab != "+1" for lab in labels])
+        force_rows = np.array([lab != "+1" and "s_" not in lab for lab in labels])  # not energy, not stress
         x, chosen, curve = _solvers.ridge_cv(A, b, groups, folds=getattr(args, "folds", 5) or 5, weights=weights,
                                              score_rows=force_rows)
         extra = {"cv_alpha": chosen, "cv_rmse_by_alpha": curve, "n_frames_cv": int(groups.max() + 1)}

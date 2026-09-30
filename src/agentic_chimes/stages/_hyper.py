@@ -184,7 +184,9 @@ def config_key(cfg: dict) -> str:
 def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinnest: float, out_dir: str):
     from ._compose import ns
 
-    cutoff = max([cfg["s_maxim_2b"]] + [c for c in (cfg.get("s_maxim_3b"), cfg.get("s_maxim_4b")) if c])
+    pair3 = cfg.get("s_maxim_3b_pairs") if cfg.get("order_3b") else None
+    cutoff = max([cfg["s_maxim_2b"]] + [c for c in (cfg.get("s_maxim_3b"), cfg.get("s_maxim_4b")) if c]
+                 + list((pair3 or {}).values()))
     order = {"2": cfg["order_2b"], "3": cfg.get("order_3b") or 0}
     if cfg.get("order_4b"):
         order["4"] = cfg["order_4b"]
@@ -194,10 +196,11 @@ def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinne
         pair_cutoffs={p: [cfg["s_minim"][p], cfg["s_maxim_2b"]] for p in cfg["s_minim"]},
         morse_lambda={p: round(cfg["morse_lambda"][p] * cfg.get("lambda_scale", 1.0), 4) for p in cfg["morse_lambda"]},
         default_s_minim=1.0, default_s_maxim=cfg["s_maxim_2b"], default_morse_lambda=1.5, s_delta=0.01,
-        wraptrj=True, nlayers=max(1, nlayers_required(cutoff, thinnest)), fitcoul=False, fitstrs="false",
+        wraptrj=True, nlayers=max(1, nlayers_required(cutoff, thinnest)), fitcoul=False, fitstrs=str(cfg.get("fitstrs") or "false"),
         fitener="true" if cfg.get("fitener") else "false", fitpovr=False, chbtype="MORSE", fcuttyp=cfg.get("fcuttyp", "CUBIC"),
         exclude_3b=cfg.get("exclude_3b") or None, exclude_4b=cfg.get("exclude_4b") or None,
         special_maxim_3b=cfg.get("s_maxim_3b") if cfg.get("order_3b") else None,
+        special_maxim_3b_pairs=pair3,
         special_maxim_4b=cfg.get("s_maxim_4b") if cfg.get("order_4b") else None,
         special_blocks=None, output_dir=out_dir,
     )
@@ -209,7 +212,7 @@ def _train_force_error(work_dir: Path):
     labels = [ln.split()[0] for ln in (work_dir / "b-labeled.txt").read_text().splitlines()]
     b = np.loadtxt(work_dir / "b.txt")
     f = np.loadtxt(work_dir / "force.txt")
-    is_force = np.array([lab != "+1" for lab in labels])
+    is_force = np.array([lab != "+1" and "s_" not in lab for lab in labels])  # not energy, not stress rows
     diff = (b - f)[is_force]
     ref = b[is_force]
     rmse = float(np.sqrt(np.mean(diff**2)))
@@ -360,6 +363,7 @@ def run_point(task: dict) -> dict:
         fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
                                             task["thinnest"], str(point_dir)))
         mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None, weights_preset=cfg.get("weights_preset"),
+                                stress_weight=cfg.get("stress_weight"),
                                 algorithm=cfg.get("solver", task["algorithm"]), alpha=cfg.get("alpha", task["alpha"]), eps=1e-5, weights=None, folds=4, normalize=False, machine=None,
                                 queue="batch", walltime_hours=1.0, nodes=1, ntasks_per_node=None, poll_interval_s=60,
                                 timeout_s=task.get("timeout_s"), output_dir=str(point_dir)))
@@ -384,6 +388,9 @@ def run_point(task: dict) -> dict:
             "holdout_rmse_force": h["rmse_force_kcal_mol_ang"],
             "holdout_relative_force_error": h["relative_force_error"],
             "holdout_rmse_energy_per_atom": h["rmse_energy_kcal_mol_per_atom"],
+            "holdout_rmse_pressure_gpa": h.get("rmse_pressure_gpa"),
+            "holdout_frames_below_inner_cutoff": h.get("n_frames_below_inner_cutoff", 0),
+            "holdout_rmse_stress_gpa": h.get("rmse_stress_gpa"),
             "holdout_relative_force_se": bootstrap_se(h["per_frame_force"]),
             "holdout_per_frame_force": h["per_frame_force"],
             "signal": signal,
@@ -431,7 +438,11 @@ def md_cost(r: dict, density: float = DEFAULT_DENSITY) -> float:
 
     cost = neigh(c["s_maxim_2b"]) * n2
     if c.get("order_3b") and n3:
-        cost += neigh(c.get("s_maxim_3b") or c["s_maxim_2b"]) ** 2 * n3
+        r3 = c.get("s_maxim_3b") or c["s_maxim_2b"]
+        if c.get("s_maxim_3b_pairs"):  # effective cutoff: cube-mean of the per-pair cutoffs
+            vals = list(c["s_maxim_3b_pairs"].values())
+            r3 = (sum(v**3 for v in vals) / len(vals)) ** (1 / 3)
+        cost += neigh(r3) ** 2 * n3
     if c.get("order_4b") and n4:
         cost += neigh(c.get("s_maxim_4b") or c.get("s_maxim_3b") or c["s_maxim_2b"]) ** 3 * n4
     return cost

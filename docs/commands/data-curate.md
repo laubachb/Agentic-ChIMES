@@ -63,6 +63,21 @@ correlated frames together (`--split-by group`, default; see
 [dataset-select](dataset-select.md)), so a relaxation path or trajectory is
 never on both sides.
 
+### Closest contacts stay in training
+
+The frame holding each element pair's closest contact is never held out.
+The inner cutoff is set just below the closest *training* distance, so a
+holdout frame closer than that sits inside the model's repulsive penalty
+and swamps the holdout error. On Cu-Zr, one such frame took the holdout
+relative force error from ~0.3 to ~1.4.
+
+### Stresses
+
+`summary.n_with_stress` and `pressure_gpa` report stress coverage.
+`fit_hints.fitstrs` is `ALL` when every frame has a full stress tensor
+(chimes_lsq fits stresses for all frames or none). Otherwise it is false,
+with a warning.
+
 ## Output files
 
 `curated.xyzf`, `train.xyzf`, `holdout.xyzf`, `curation_report.json`

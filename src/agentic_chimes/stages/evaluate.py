@@ -78,18 +78,41 @@ def _supercell(frame, cutoff: float):
     return big_pos, list(frame.symbols) * len(shifts), big_cell, len(shifts)
 
 
-def predict(wrapper, ptr, frame, cutoff: float):
+def predict(wrapper, ptr, frame, cutoff: float, *, with_stress: bool = False):
     """ChIMES energy (kcal/mol) and forces (kcal/mol/A, one row per atom)
-    for one periodic frame, via an exact supercell (see _supercell)."""
+    for one periodic frame, via an exact supercell (see _supercell). With
+    with_stress, also the stress as xyzf's [xx, yy, zz, xy, xz, yz] in GPa
+    (pressure sign; chimes_calculator returns -dE/dV in kcal/mol/A^3,
+    intensive, so the supercell does not change it)."""
     big_pos, big_sym, big_cell, ncopies = _supercell(frame, cutoff)
     n = len(big_sym)
-    fx, fy, fz, _stress, energy = wrapper.calculate_chimes_instance(
+    fx, fy, fz, stress9, energy = wrapper.calculate_chimes_instance(
         ptr, n, big_pos[:, 0].tolist(), big_pos[:, 1].tolist(), big_pos[:, 2].tolist(), big_sym,
         big_cell[0].tolist(), big_cell[1].tolist(), big_cell[2].tolist(), 0.0,
         [0.0] * n, [0.0] * n, [0.0] * n, [0.0] * 9,
     )
     k = frame.natoms
+    if with_stress:
+        s = [c * units.CHIMES_STRESS_TO_GPA for c in stress9]
+        return energy / ncopies, list(zip(fx[:k], fy[:k], fz[:k])), [s[0], s[4], s[8], s[1], s[2], s[5]]
     return energy / ncopies, list(zip(fx[:k], fy[:k], fz[:k]))
+
+
+def _closest(frame, rmax: float = 4.0) -> dict:
+    """Closest distance per element pair "A-B" (sorted) in one periodic frame."""
+    from ase import Atoms
+    from ase.neighborlist import neighbor_list
+    import numpy as np
+
+    cell = np.asarray(frame.box if frame.non_ortho else np.diag(frame.box), dtype=float)
+    at = Atoms(symbols=frame.symbols, positions=frame.positions, cell=cell, pbc=True)
+    i, j, d = neighbor_list("ijd", at, rmax)
+    sym = np.array(frame.symbols)
+    out = {}
+    for a, b, r in zip(sym[i], sym[j], d):
+        key = "-".join(sorted((a, b)))
+        out[key] = min(out.get(key, 1e9), float(r))
+    return out
 
 
 def _cell_vectors(frame):
@@ -139,12 +162,26 @@ def run(args) -> dict:
     energy_sqerr = [0.0] * n_models
     energy_n = [0] * n_models
     per_frame_energy = [[] for _ in range(n_models)]
+    stress_sqerr = [0.0] * n_models
+    pressure_sqerr = [0.0] * n_models
+    stress_n = [0] * n_models
 
     cutoffs = [max_outer_cutoff(pp) for pp in params_paths]
+    below = [0] * n_models  # holdout frames with a contact inside the model's inner cutoff (penalty region)
+    from .md_check import pair_inner_cutoffs
+
+    inner = [pair_inner_cutoffs(pp) for pp in params_paths]
+    closest = [_closest(frame) for frame in frames]
+    for mi in range(n_models):
+        below[mi] = sum(any(r < inner[mi].get(k, 0.0) for k, r in c.items()) for c in closest)
     try:
         for frame in frames:
             for mi, ptr in enumerate(instances):
-                energy, pred_forces = predict(wrapper, ptr, frame, cutoffs[mi])
+                energy, pred_forces, pred_stress = predict(wrapper, ptr, frame, cutoffs[mi], with_stress=True)
+                if frame.stress is not None and len(frame.stress) == 6:
+                    stress_sqerr[mi] += sum((p - r) ** 2 for p, r in zip(pred_stress, frame.stress))
+                    pressure_sqerr[mi] += (sum(pred_stress[:3]) / 3 - sum(frame.stress[:3]) / 3) ** 2
+                    stress_n[mi] += 1
                 # .xyzf forces are hartree/bohr; chimes_calculator returns kcal/mol/A
                 f_err = f_ref = f_abs = 0.0
                 for (pfx, pfy, pfz), ref in zip(pred_forces, frame.forces):
@@ -183,11 +220,19 @@ def run(args) -> dict:
                 "reduced_force_rmse": rmse_f / (ref_force_abs / ref_force_n) if rmse_f is not None and ref_force_abs else None,
                 "rmse_energy_kcal_mol": math.sqrt(energy_sqerr[mi] / energy_n[mi]) if energy_n[mi] else None,
                 "rmse_energy_kcal_mol_per_atom": math.sqrt(energy_pa_sqerr[mi] / energy_n[mi]) if energy_n[mi] else None,
+                # stresses (GPa, pressure sign) when the holdout frames carry them
+                "rmse_stress_gpa": math.sqrt(stress_sqerr[mi] / (6 * stress_n[mi])) if stress_n[mi] else None,
+                "rmse_pressure_gpa": math.sqrt(pressure_sqerr[mi] / stress_n[mi]) if stress_n[mi] else None,
+                "n_frames_with_stress": stress_n[mi],
+                "n_frames_below_inner_cutoff": below[mi],
             }
         )
         if getattr(args, "per_frame", False):
             results[-1]["per_frame_force"] = frame_rows[mi]  # [sq error sum, reference sq sum, n components]
 
+    below_note = [f"{r['params']}: {r['n_frames_below_inner_cutoff']} holdout frame(s) have contacts inside the model's "
+                  "inner cutoff (penalty region); their errors dominate the RMSE. Put the closest contacts in training "
+                  "(data-curate/dataset-select do) or lower s_minim." for r in results if r["n_frames_below_inner_cutoff"]]
     committee_spread = None
     if n_models > 1:
         per_frame_spread = []
@@ -201,4 +246,4 @@ def run(args) -> dict:
         }
 
     return {"n_frames": len(frames), "n_models": n_models, "reference_force_rms_kcal_mol_ang": ref_force_rms,
-            "results": results, "committee_spread": committee_spread}
+            "results": results, "committee_spread": committee_spread, **({"warnings": below_note} if below_note else {})}

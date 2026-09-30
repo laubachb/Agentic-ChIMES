@@ -42,7 +42,10 @@ def run_hosttype_script(
     from `cwd`, logging combined stdout/stderr to `log_path`. Raises
     BuildError on nonzero exit."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env_prefix = f"export hosttype={hosttype}\n"
+    # hosttype "none" (the generic profile): leave it unset, so every fork's
+    # install.sh builds with the compilers already on PATH (the one convention
+    # all three installers share; an unknown or empty value errors in some).
+    env_prefix = "unset hosttype\n" if str(hosttype).lower() in ("", "none") else f"export hosttype={hosttype}\n"
     full_script = env_prefix + script
 
     proc = subprocess.run(

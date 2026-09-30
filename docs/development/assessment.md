@@ -54,20 +54,36 @@ Fixed since the audit, validated by tests and on Dane:
   - automatic replication of thin cells in `lammps-run`. This was a newly
     found bug: LAMMPS energies were 30-50 kcal/mol off on 2-atom cells.
 
+Second pass (same day), each checked on Cu-Zr or against reference data:
+
+- **Stresses:** carried from ColabFit/ASE/QE with the sign verified per
+  dataset, fitted, and the stress weight measured.
+- **Per-pair 3-body cutoffs:** agree across chimes_lsq, the calculator and
+  LAMMPS.
+- **Fingerprints:** native, matching the shipped tool's reference output.
+- **Hierarchical fitting:** tied with fitting all at once.
+- **MD validator and active-learner agents,** with `al-merge` and
+  `fm-setup-gen --hyper-choice`.
+- **CI integration workflow** on a `generic` machine profile; the
+  end-to-end test passes on Dane.
+
+Bugs found along the way:
+
+- a holdout frame inside the inner cutoff (now kept in training, and
+  flagged by `evaluate`);
+- masses silently defaulting to 1 amu;
+- LAMMPS energies on thin cells;
+- failed stage runs blocking retries.
+
 Still open:
 
-- `doctor` / self-test;
-- stresses through the data stages;
-- per-pair 3-body cutoffs;
-- hierarchical fitting and fingerprint wrappers;
+- B5 (history rewrite);
 - more data backends;
-- the MD and active-learning *agents* (their stages now exist);
-- a CI integration tier;
 - slimming `auto-build`;
-- the default smoothing. The CUBIC-vs-TERSOFF comparison on Cu-Zr
-  (`docs/commands/hyper-search.md`) kept CUBIC for small data. TERSOFF made
-  many-body terms active but overfit and did not improve forces on 126
-  frames. Revisit on a larger dataset.
+- the default smoothing, revisited on a larger dataset;
+- the CI workflow has not run on GitHub yet: the forks' clone access
+  (public HTTPS or a `CHIMES_FORKS_TOKEN` secret) needs confirming;
+- fingerprints are type-agnostic, as in the paper.
 
 ## 1. Bugs
 

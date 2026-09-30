@@ -34,6 +34,7 @@ STAGE_MODULE_NAMES = [
     "data_fetch",
     "data_generate",
     "data_curate",
+    "fingerprint",
     "dataset_select",
     "qe_relabel",
     "hyper_analyze",
@@ -42,6 +43,7 @@ STAGE_MODULE_NAMES = [
     "amat_build",
     "solve",
     "weights",
+    "hierarch",
     "model_build",
     "sweep",
     "auto_build",
@@ -53,6 +55,7 @@ STAGE_MODULE_NAMES = [
     "study_report",
     "submit",
     "al_select",
+    "al_merge",
     "al_run",
 ]
 

@@ -57,15 +57,16 @@ def run(args) -> dict:
         raise ValueError("submit requires --machine unless --status-of/--cancel is given")
     if not args.commands:
         raise ValueError("submit requires at least one --command (or 'commands' in --json-in)")
-    if not getattr(args, "output_dir", None):
-        raise ValueError("submit requires --output-dir as the job's work_dir")
+    work_dir = getattr(args, "work_dir", None) or getattr(args, "output_dir", None)
+    if not work_dir:
+        raise ValueError("submit requires --output-dir (or work_dir in --json-in) as the job's work_dir")
 
     profile = machines.load_profile(args.machine)
     handle = hpc.submit_job(
         profile,
         job_name=args.job_name,
         commands=args.commands,
-        work_dir=args.output_dir,
+        work_dir=work_dir,
         nodes=args.nodes,
         ntasks_per_node=args.ntasks_per_node,
         walltime_hours=args.walltime_hours,

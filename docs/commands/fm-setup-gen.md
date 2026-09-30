@@ -41,6 +41,23 @@ Cutoffs/λ don't have to be hand-picked — [`auto-build`](auto-build.md) derive
 from your training data's own radial distribution, per ChIMES' documented
 guidance.
 
+## Newer inputs
+
+- `--hyper-choice best/hyper_choice.json`: fills elements, masses, order,
+  cutoffs, λ, exclusions, N_LAYERS, fitener/fitstrs and smoothing from a
+  `hyper-search` result. Solver keys are ignored. Explicit inputs win,
+  except values equal to the defaults. This is how an active-learning round
+  refits the chosen model on merged data.
+- `special_maxim_3b_pairs` `{"A-B": r}`: per-pair 3-body cutoffs, written as
+  `SPECIAL 3B S_MAXIM: SPECIFIC` rows (excluded triplet types are skipped).
+  chimes_lsq, chimes_calculator and LAMMPS all read them: the three agreed
+  to 5×10⁻⁶ kcal/mol/Å on a Cu-Zr model, despite the chimes_lsq docs calling
+  the format LAMMPS-incompatible.
+- `exclude_1b`, `exclude_2b`, `hierarc`: hierarchical fits (see
+  [hierarch](hierarch.md)).
+- **Masses** default to standard atomic masses. They used to default to
+  1.0 amu, which gives wrong dynamics, and LAMMPS matches atom types by mass.
+
 ## Output
 
 ```json

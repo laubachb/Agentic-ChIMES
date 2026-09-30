@@ -1,6 +1,46 @@
 # Changelog
 
-## Unreleased — robustness and accuracy fixes from the assessment
+## Unreleased — stresses, per-pair cutoffs, fingerprints, hierarchical fits, MD and AL agents
+
+- **Stresses end to end.** `data-fetch` keeps stresses from ASE files
+  (Cauchy sign) and ColabFit. It verifies the ColabFit sign per dataset
+  (pressure must fall with volume per composition); MatPES stores the
+  pressure sign despite the column name. `qe-relabel --collect` parses QE's
+  stress. `data-curate` sets `fit_hints.fitstrs: ALL`, `evaluate` reports
+  stress and pressure RMSE (GPa), and `hyper-search` fits stresses with a
+  final `stress` stage that measures the stress weight. On 2-atom Cu-Zr cells
+  the published weight (100) wrecked the fit; the stage chose 3, and holdout
+  pressure error fell 4.43 → 2.88 GPa at unchanged force error.
+- **Per-pair 3-body cutoffs:** `fm-setup-gen special_maxim_3b_pairs`
+  (SPECIFIC rows) and a `3b_pairs` stage in `hyper-search`. chimes_lsq,
+  chimes_calculator and LAMMPS agree to 5e-6 on such a model.
+- **`fingerprint`** (new): native cluster-graph fingerprints (matches
+  chimes_calculator's shipped tool on its reference), D² dataset comparison,
+  per-frame novelty, `novel.xyzf`; `--machine` for large sets.
+- **`hierarch`** (new): hierarchical fitting through al_driver's machinery
+  (subtract element models, merge cross + element params; guarded against
+  al_driver's empty 4-body block). `fm-setup-gen` writes `EXCLUDE 1B/2B` and
+  `HIERARC`. Tied with fitting all at once on Cu-Zr.
+- **`al-merge`** (new) and **`fm-setup-gen --hyper-choice`**: one
+  active-learning round merges labels (theory check, fixed holdout, cycle
+  bookkeeping for n/I decay) and refits the chosen model.
+- **Agents:** `chimes-md-validator` (skill `chimes-md-validation`) and
+  `chimes-active-learner`. Every study phase now has an agent.
+- **`generic` machine profile** (compilers/MPI from PATH; `hosttype: none`)
+  and a **CI integration workflow**: it builds the toolchain on Ubuntu, runs
+  `doctor`, the unit tests and an end-to-end EMT-labeled study
+  (`tests/integration`; passes on Dane).
+- Fixes:
+  - The holdout split keeps each pair's closest contact in training. One
+    holdout frame inside the inner cutoff had pushed the Cu-Zr holdout error
+    from ~0.3 to ~1.4. `evaluate` reports `n_frames_below_inner_cutoff`.
+  - `fm-setup-gen` masses default to standard atomic masses (were 1.0 amu).
+  - Failed stage runs can be retried without `--force`.
+  - `submit` honors `work_dir`.
+  - Stress rows are no longer counted as forces in training errors or CV
+    grouping.
+
+## Robustness and accuracy fixes from the assessment
 
 Robustness:
 

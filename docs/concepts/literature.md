@@ -46,14 +46,14 @@ each, and where it departs from them (usually a known gap, listed in the
 | Topic | Literature | Toolkit | What to do |
 |---|---|---|---|
 | Smoothing | TERSOFF (f_O 0.5-0.75) for models with more than 3-body terms, because the cubic form shrinks many-body terms | CUBIC by default; `--smoothing 'TERSOFF 0.5'` available | see the Cu-Zr comparison in [hyper-search](../commands/hyper-search.md) |
-| 3-body cutoffs | may differ per pair (water: each pair at its own third shell) | one global 3-body cutoff in the search | edit `fm_setup.in` (`SPECIAL 3B S_MAXIM: SPECIFIC`) and compare with `sweep` |
+| 3-body cutoffs | may differ per pair (water: each pair at its own third shell) | `hyper-search` `3b_pairs` stage; `fm-setup-gen special_maxim_3b_pairs` | verified consistent across chimes_lsq, chimes_calculator and LAMMPS |
 | Model selection | holdout CV, then MD against DFT for the top candidates | holdout search + [md-check](../commands/md-check.md) | run `md-check` on the tied finalists with a DFT reference |
 | Complexity before active learning | err toward richer models, prune after the data is final | `hyper-search --prefer richer` | use it for ALC-0 models |
 | Fitting weights | forces 1, energies 0.3-5, stresses 100; AL frames decayed as n/I | [weights](../commands/weights.md) presets + al_driver methods + decay | pick a preset; default is still uniform |
-| Stresses | needed for density and pressure | not fitted from open data | QE relabel with stresses; `fitstrs` in `fm-setup-gen` |
+| Stresses | needed for density and pressure; weights 100-250 | carried from open data and QE (sign verified per dataset); `hyper-search` fits them and measures the stress weight | published weights assume large cells: on 2-atom cells 100 wrecked the fit, 3 was best |
 | Validation | RDF, EOS, diffusion, spectra, speciation vs DFT | `md-check`: stability, close contacts, RDF vs reference | EOS, diffusion by hand |
-| Multi-element fitting | hierarchical element blocks (al_driver 2.0) | not exposed | use al_driver directly |
-| Coverage / stopping AL | cluster-graph fingerprints | not wrapped | chimes_calculator `chimesFF/src/FP` |
+| Multi-element fitting | hierarchical element blocks (al_driver 2.0) | [hierarch](../commands/hierarch.md) (subtract, combine) | tied with all-at-once on Cu-Zr |
+| Coverage / stopping AL | cluster-graph fingerprints | [fingerprint](../commands/fingerprint.md) (native, matches the shipped tool) | type-agnostic, as in the paper |
 
 ## For agents
 

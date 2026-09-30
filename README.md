@@ -29,10 +29,10 @@ repeated by hand.
 ## How it works
 
 ```
- you ─► plan ─► data ─► hyperparameters ─► model ─► active learning ─► MD ─► benchmark ─► deploy + report
-         │        │            │              │            │             │         │              │
-       STUDY.md  data-      hyperparameter  fit-        al-select/     lammps-  benchmark     report-
-                 curator     tuner          reviewer     al-run         run      agent         writer
+ you ─► plan ─► data ─► hyperparameters ─► model ─► MD validation ⇄ active learning ─► benchmark ─► deploy + report
+         │        │            │              │             │                  │                │              │
+       STUDY.md  data-      hyperparameter  fit-          md-              active-          benchmark     report-
+                 curator     tuner          reviewer      validator        learner          agent         writer
 ```
 
 - **The orchestrator** is the main Claude Code conversation (skill
@@ -40,8 +40,9 @@ repeated by hand.
   each phase to a specialist agent, and brings every decision and cluster
   submission back to you.
 - **Specialist agents** (`.claude/agents/`): data curation, hyperparameter
-  search, independent fit review, benchmarking and compute accounting, the
-  final report, and cheap job monitoring. Each follows a written playbook
+  search, independent fit review, MD validation, active learning,
+  benchmarking and compute accounting, the final report, and cheap job
+  monitoring. Each follows a written playbook
   (`.claude/skills/`) and returns a fixed-format report.
 - **Stages** do the deterministic work: fetch from open DFT databases,
   label with Quantum ESPRESSO, build and solve the ChIMES fit, evaluate,
@@ -135,9 +136,9 @@ A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
 | Phase | Commands |
 |---|---|
 | Study | `study` (create / register / status), `usage` (CPU-hours), `study-report` |
-| Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `dataset-select`, `qe-relabel` |
-| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `model-build`, `sweep`, `auto-build`, `evaluate` |
-| Active learning | `al-select`, `al-run` |
+| Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `fingerprint`, `dataset-select`, `qe-relabel` |
+| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate` |
+| Active learning | `al-select`, `al-merge`, `al-run` |
 | MD, performance, deployment | `lammps-run`, `md-check`, `benchmark`, `deploy` |
 | Infrastructure | `setup`, `doctor`, `submit` |
 
@@ -153,10 +154,11 @@ Reference for each: [docs/commands/](docs/commands/index.md).
   QE, extxyz, anything ASE reads) is supported directly.
 - LAMMPS stages handle triclinic cells. Only `auto-build`'s cutoff
   derivation is orthorhombic-only.
-- Not yet agents: MD validation and active-learning orchestration. The
-  stages exist (`md-check` validates candidates and harvests close-contact
-  frames; `al-select`/`al-run`), driven by the `chimes-active-learning`
-  skill.
+- Every phase has an agent, including MD validation (`chimes-md-validator`)
+  and active learning (`chimes-active-learner`).
+- Clusters without a bundled profile: use `--machine generic` (compilers
+  and MPI from your PATH) or copy a profile. See
+  docs/concepts/machine_profiles.md.
 - Run `chimes-agent doctor --machine <m>` after setup; set `CHIMES_ACCOUNT`
   for the machine profiles.
 

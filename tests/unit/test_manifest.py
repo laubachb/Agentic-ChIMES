@@ -83,3 +83,9 @@ def test_legacy_manifest_without_file_fingerprints_still_short_circuits(tmp_path
         {"stage": "stage-a", "input_hash": legacy, "status": "done", "outputs": {"out": "a"}}))
     decision, prior = _manifest.begin(tmp_path, "stage-a", inputs)
     assert decision == "short_circuit" and prior["outputs"] == {"out": "a"}
+
+
+def test_failed_run_can_be_retried_with_new_inputs(tmp_path):
+    _manifest.begin(tmp_path, "stage-a", {"x": 1})
+    _manifest.finish(tmp_path, "stage-a", {"x": 1}, {"error": "boom"}, status="failed")
+    assert _manifest.begin(tmp_path, "stage-a", {"x": 2})[0] == "run"

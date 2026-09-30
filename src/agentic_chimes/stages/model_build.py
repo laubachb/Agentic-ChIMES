@@ -33,6 +33,7 @@ SCHEMA = {
         "alpha": {"type": "number", "default": 1.0e-4},
         "eps": {"type": "number", "default": 1.0e-5},
         "weights": {"type": ["string", "null"], "description": "Per-row weights file (see the weights stage)."},
+        "stress_weight": {"type": ["number", "null"], "description": "Override the stress-row weight of weights_preset (default preset uniform). Published values (100-250) assume large cells; measure it (hyper-search's stress stage)."},
         "weights_preset": {"type": ["string", "null"], "description": "Build weights.dat from this weights-stage preset (uniform, al_driver, lindsey2020, carbon2_large, hierarchical2026) after the A-matrix, when no weights file is given."},
         "folds": {"type": "integer", "default": 4},
         "normalize": {"type": "boolean", "default": False, "description": "dlars/dlasso only."},
@@ -54,6 +55,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--eps", type=float, default=1.0e-5)
     parser.add_argument("--weights", default=None)
     parser.add_argument("--weights-preset", dest="weights_preset", default=None)
+    parser.add_argument("--stress-weight", dest="stress_weight", type=float, default=None)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--normalize", type=lambda s: s.lower() == "true", default=False)
     parser.add_argument("--machine", default=None)
@@ -107,10 +109,12 @@ def run(args) -> dict:
     weights_file = getattr(args, "weights", None)
     weights_info = None
     preset = getattr(args, "weights_preset", None)
-    if preset and not weights_file and preset != "uniform":
+    stress_weight = getattr(args, "stress_weight", None)
+    if not weights_file and ((preset and preset != "uniform") or stress_weight is not None):
         from . import weights as weights_stage
 
-        weights_info = weights_stage.build(work_dir, preset=preset)
+        overrides = {"stress": ["A", [float(stress_weight)]]} if stress_weight is not None else None
+        weights_info = weights_stage.build(work_dir, preset=preset or "uniform", overrides=overrides)
         weights_file = weights_info["weights"]
 
     solve_result = solve.run(

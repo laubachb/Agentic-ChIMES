@@ -61,14 +61,14 @@ def solve_normalized(A, b, method: str, *, alpha: float, eps: float, weights=Non
 def frame_groups(b_labeled: Path, natoms: Path):
     """Row -> training-frame index, from amat-build's own b-labeled.txt and
     natoms.txt (natoms of the row's frame, one line per row). A frame is
-    3*N force rows followed by its energy rows (label "+1"), if any."""
+    3*N force rows followed by its stress ("s_..") and energy ("+1") rows, if any."""
     labels = [ln.split()[0] for ln in Path(b_labeled).read_text().splitlines()]
     nat = [int(float(x)) for x in Path(natoms).read_text().split()]
     groups, i, g = [], 0, 0
     while i < len(labels):
         n_force = 3 * nat[i]
         j = i + n_force
-        while j < len(labels) and labels[j] == "+1":
+        while j < len(labels) and (labels[j] == "+1" or "s_" in labels[j]):
             j += 1
         groups.extend([g] * (j - i))
         i, g = j, g + 1

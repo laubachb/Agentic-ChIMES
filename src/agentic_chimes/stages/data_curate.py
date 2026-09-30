@@ -333,9 +333,13 @@ def run(args) -> dict:
         warnings.append(f"thinnest cell width {min(widths):.2f} A: an 8 A outer cutoff needs N_LAYERS >= {need8} in fm_setup.in (see fit_hints.nlayers_required)")
     n_non_ortho = sum(1 for f in curated_frames if f.non_ortho)
     if n_non_ortho:
-        warnings.append(f"{n_non_ortho} non-orthorhombic frames: chimes_lsq accepts them, but auto-build's cutoff derivation and lammps-run data files are orthorhombic-only")
+        warnings.append(f"{n_non_ortho} non-orthorhombic frames: chimes_lsq accepts them, but auto-build's cutoff derivation is orthorhombic-only (LAMMPS stages handle triclinic cells)")
     if not labeled:
         warnings.append("structure-only set: label with qe-relabel before fitting")
+    n_stress = sum(1 for f in curated_frames if f.stress is not None and len(f.stress) == 6)
+    if labeled and 0 < n_stress < len(curated_frames):
+        warnings.append(f"only {n_stress}/{len(curated_frames)} frames carry stresses: chimes_lsq fits stresses for all "
+                        "frames or none, so fitstrs stays false; curate the stressed frames separately to fit them")
 
     split = None
     holdout_fraction = getattr(args, "holdout_fraction", 0.2)
@@ -372,6 +376,10 @@ def run(args) -> dict:
         "natoms_range": [min(f.natoms for f in curated_frames), max(f.natoms for f in curated_frames)],
         "n_non_orthorhombic": n_non_ortho,
         "thinnest_cell_width_ang": float(min(widths)),
+        "n_with_stress": n_stress,
+        "pressure_gpa": ({"min": float(min(sum(f.stress[:3]) / 3 for f in curated_frames)),
+                          "max": float(max(sum(f.stress[:3]) / 3 for f in curated_frames))}
+                         if n_stress == len(curated_frames) and n_stress else None),
         "max_force_ev_ang": {"p50": float(np.percentile(fvals, 50)), "p99": float(np.percentile(fvals, 99)), "max": float(max(fvals))} if fvals else None,
         "energy_residual_ev_per_atom": residual_stats,
     }
@@ -389,7 +397,8 @@ def run(args) -> dict:
             "s_minim_upper_bound": {pk: s["min_distance"] for pk, s in pairs.items() if s["min_distance"] is not None},
             "nlayers_required": {f"{r:.1f}": nlayers_required(r, min(widths)) for r in (4.0, 6.0, 8.0)},
             "fitener": bool(energy_idx),
-            "fitstrs": False,
+            # "ALL" = full tensor (chimes_lsq FITSTRS ALL); needed for pressure/density (Lindsey 2019)
+            "fitstrs": "ALL" if labeled and n_stress == len(curated_frames) and n_stress else False,
         },
         "warnings": warnings,
         "sources": provenances,

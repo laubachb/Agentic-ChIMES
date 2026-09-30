@@ -39,7 +39,7 @@ CATALOG_COLUMNS = (
 )
 CONFIG_COLUMNS = (
     "configuration_id", "method", "software", "energy", "atomic_forces",
-    "cell", "positions", "pbc", "atomic_numbers",
+    "cell", "positions", "pbc", "atomic_numbers", "cauchy_stress", "cauchy_stress_volume_normalized",
 )
 
 

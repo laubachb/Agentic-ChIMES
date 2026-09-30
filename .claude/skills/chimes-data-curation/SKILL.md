@@ -101,8 +101,11 @@ Write `01_data/DATA_PLAN.md` before fetching anything:
   model is for NpT or equation-of-state work, prefer sources with stresses
   (QE relabel provides them).
 - Coverage can be checked quantitatively with cluster-graph fingerprints
-  (Laubach 2026 JCIM: Mahalanobis D² between datasets). This is not wrapped
-  yet; mention it as an option for single-element systems.
+  (Laubach 2026 JCIM): `fingerprint --reference-xyzf <pool A>
+  --candidates-xyzf <pool B>` gives D² between datasets and the novel
+  frames. It compares structure only, not chemical order.
+- Stresses are carried from open data (sign verified per dataset) and from
+  QE. `fit_hints.fitstrs` is `ALL` when every frame has one.
 - Multi-fidelity: cheap DFTB exploration followed by DFT relabeling of the
   selected set is published practice (Lindsey 2025) when DFT-MD is too
   expensive.

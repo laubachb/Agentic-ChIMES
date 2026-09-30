@@ -210,9 +210,10 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
 
   This hierarchical approach performed as well as fitting everything at
   once, and blocks are reusable across systems **[HT25]**. al_driver 2.0
-  implements it (`codes/al_driver-LLfork/src/hierarch.py`); the toolkit does
-  not expose it yet. It is a principled alternative to excluding cross-type
-  clusters.
+  implements it (`codes/al_driver-LLfork/src/hierarch.py`); the toolkit's
+  `hierarch` stage wraps it (subtract, then combine). On Cu-Zr it was tied
+  with fitting all at once (0.323 vs 0.306). It is a principled alternative
+  to excluding cross-type clusters.
 
 ## Fingerprinting and coverage
 
@@ -223,10 +224,10 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
 - Uses: coverage checks for dataset curation, novelty detection for active
   learning, detecting equilibration, and the active-learning stopping
   criterion **[FP26]**.
-- Currently single-element. The tool ships in chimes_calculator
-  (`chimesFF/src/FP`, example `etc/lmp/tests/example-fingerprint`; build
-  LAMMPS with `etc/lmp/install.sh FINGERPRINT`). Not yet wrapped by the
-  toolkit.
+- Type-agnostic (structure only, as in the paper). The toolkit's
+  `fingerprint` stage reimplements the shipped tool natively
+  (`chimesFF/src/FP`): it matches the tool's reference output and needs no
+  special LAMMPS build.
 
 ## ChIMES with DFTB
 

@@ -1,0 +1,62 @@
+name: integration
+
+# Builds the real ChIMES toolchain (chimes_lsq, chimes_calculator, LAMMPS with
+# the ChIMES pair style) on a stock Ubuntu runner through the `generic`
+# machine profile, then runs:
+#   - `chimes-agent doctor`: components plus reference numerics (LAMMPS and
+#     the calculator must reproduce the published CHON energy/forces);
+#   - the unit tests with nothing skipped for missing builds;
+#   - tests/integration: an end-to-end EMT-labeled study (curate ->
+#     hyper-search with a stress stage -> evaluate -> md-check -> fingerprint).
+# No Slurm and no QE (QE labeling is checked by unit tests and dry runs).
+#
+# The ChIMES forks are cloned over SSH URLs; here they are rewritten to
+# HTTPS. If the forks are private, add a read-only token as the repository
+# secret CHIMES_FORKS_TOKEN.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays
+  push:
+    branches: [master]
+    paths: ["src/**", "tests/**", ".github/workflows/integration.yml"]
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compilers and MPI
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake gfortran libopenmpi-dev openmpi-bin git
+      - name: Clone access for the ChIMES forks
+        env:
+          TOKEN: ${{ secrets.CHIMES_FORKS_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
+          else
+            git config --global url."https://github.com/".insteadOf "git@github.com:"
+          fi
+      - run: pip install -e ".[dev,data]"
+      - name: Build (generic profile)
+        run: |
+          chimes-agent setup --component codes
+          chimes-agent setup --machine generic --component chimes_lsq --component chimes_calculator --component lammps
+      - name: Doctor
+        run: |
+          chimes-agent doctor | tee doctor.json
+          python -c "import json,sys; d=json.load(open('doctor.json')); sys.exit(1 if d['n_fail'] else 0)"
+      - name: Unit tests (nothing skipped for missing builds)
+        run: pytest tests/unit -v -rs
+      - name: End-to-end study
+        run: pytest tests/integration -v -rs
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: deps/logs/

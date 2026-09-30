@@ -26,6 +26,12 @@ below `group_rmsd` Å; groups are the connected chains of links (checked
 within a window of nearby frames, since trajectories are stored in order).
 A composition class that is a single group cannot be split by group; its
 last frames (a contiguous block) are held out instead, and a note says so.
+
+Either way, the frame holding each element pair's closest contact always
+stays in the selected (training) set. The inner cutoff is set just below the
+closest *training* distance, so a holdout frame closer than that sits inside
+the repulsive penalty. On Cu-Zr that single frame pushed the holdout relative
+force error from ~0.3 to ~1.4.
 """
 
 from __future__ import annotations
@@ -185,6 +191,14 @@ def _stratified_split(frames, n_select: int, seed: int) -> tuple:
         rng.shuffle(extra)
         selected_set = set(extra[:n_select])
 
+    # closest contacts stay in training (see the module docstring): swap each one in for another frame
+    for k in sorted(closest_contact_frames(frames)):
+        if k not in selected_set:
+            swap = [i for i in sorted(selected_set) if _composition_class(frames[i]) == _composition_class(frames[k])]
+            swap = swap or sorted(selected_set)
+            selected_set.discard(rng.choice(swap))
+            selected_set.add(k)
+
     return sorted(selected_set), [i for i in range(n_pool) if i not in selected_set]
 
 
@@ -227,10 +241,29 @@ def correlated_groups(frames, *, rmsd: float = 0.3, cell_tol: float = 0.03, wind
     return [roots.setdefault(find(i), len(roots)) for i in range(len(frames))]
 
 
+def closest_contact_frames(frames, rmax: float = 4.0) -> set:
+    """Indices of the frames holding each element pair's smallest distance."""
+    from ase import Atoms
+    from ase.neighborlist import neighbor_list
+
+    best = {}
+    for k, f in enumerate(frames):
+        cell = np.asarray(f.box if f.non_ortho else np.diag(f.box), dtype=float)
+        at = Atoms(symbols=f.symbols, positions=f.positions, cell=cell, pbc=True)
+        i, j, d = neighbor_list("ijd", at, rmax)
+        sym = np.array(f.symbols)
+        for a, b, r in zip(sym[i], sym[j], d):
+            key = tuple(sorted((a, b)))
+            if r < best.get(key, (np.inf, None))[0]:
+                best[key] = (float(r), k)
+    return {k for _, k in best.values()}
+
+
 def _group_split(frames, n_select: int, seed: int, *, rmsd: float, cell_tol: float) -> tuple:
     """Stratified by composition class; whole correlated groups go to the holdout."""
     rng = random.Random(seed)
     groups = correlated_groups(frames, rmsd=rmsd, cell_tol=cell_tol)
+    protected_groups = {groups[k] for k in closest_contact_frames(frames)}
     n_pool = len(frames)
     n_hold_target = n_pool - n_select
     by_class: dict = {}
@@ -243,7 +276,7 @@ def _group_split(frames, n_select: int, seed: int, *, rmsd: float, cell_tol: flo
         target = round(n_cls * n_hold_target / n_pool)
         if target == 0:
             continue
-        gids = list(members)
+        gids = [g for g in members if g not in protected_groups]
         rng.shuffle(gids)
         taken = 0
         if len(gids) > 1:
@@ -254,16 +287,18 @@ def _group_split(frames, n_select: int, seed: int, *, rmsd: float, cell_tol: flo
                     taken += size
                 if taken >= target:
                     break
-        if taken < target // 2:
+        if taken < target // 2 and members:
             # one (or a few very large) groups: hold out a contiguous tail block of the largest one
-            big = max(gids, key=lambda g: len(members[g]))
-            block = [i for i in members[big] if i not in holdout][-(target - taken):]
+            big = max(members, key=lambda g: len(members[g]))
+            protected = closest_contact_frames([frames[i] for i in members[big]])
+            block = [i for n_, i in enumerate(members[big]) if i not in holdout and n_ not in protected][-(target - taken):]
             holdout.update(block)
             taken += len(block)
             notes.append(f"class {'-'.join(cls)}: frames are one correlated group (e.g. a single trajectory); held out its last "
                          f"{len(block)} frames as a contiguous block, which is less correlated with training than random frames")
     selected = [i for i in range(n_pool) if i not in holdout]
-    info = {"n_groups": len(set(groups)), "largest_group": max(groups.count(g) for g in set(groups)), "notes": notes}
+    info = {"n_groups": len(set(groups)), "largest_group": max(groups.count(g) for g in set(groups)), "notes": notes,
+            "kept_for_closest_contacts": len(protected_groups)}
     return selected, sorted(holdout), info
 
 

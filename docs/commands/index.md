@@ -21,12 +21,14 @@ contract every page below assumes.
 | [`amat-build`](amat-build.md) | **implemented** (local or `--machine`) | Build A.txt/b.txt/dim.txt via the `chimes_lsq` binary |
 | [`solve`](solve.md) | **implemented** (local algorithms + dlars/dlasso via `--machine`, validated on a real Slurm job) | Solve for `params.txt` |
 | [`weights`](weights.md) | **implemented** | Per-row fitting weights: al_driver methods + published presets, AL decay |
+| [`hierarch`](hierarch.md) | **implemented** | Hierarchical fitting: subtract fixed element models, merge cross + element params |
 | [`model-build`](model-build.md) | **implemented** | Complete build: amat-build then solve, sequentially |
 | [`auto-build`](auto-build.md) | **implemented** | Full pipeline: unlabeled configs → QE labeling → data-driven cutoffs/λ → order sweep → one optimal model → optional AL stabilization |
 | [`data-search`](data-search.md) | **implemented** | Search open DFT datasets (ColabFit on Hugging Face) for a chemical system |
 | [`data-fetch`](data-fetch.md) | **implemented** | Fetch matching configurations from a dataset or local DFT files into one `.xyzf` + provenance |
 | [`data-generate`](data-generate.md) | **implemented** | Strained/rattled/substituted supercells for QE labeling |
 | [`data-curate`](data-curate.md) | **implemented** | Filter, analyze coverage, subsample and split into a base dataset + `data_manifest.json` |
+| [`fingerprint`](fingerprint.md) | **implemented** | Cluster-graph fingerprints: dataset coverage (D²), frame novelty, AL stopping |
 | [`dataset-select`](dataset-select.md) | **implemented** | FPS / random / stratified-holdout sampling |
 | [`sweep`](sweep.md) | **implemented** (local algorithms) | Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm |
 | [`evaluate`](evaluate.md) | **implemented** | Holdout force/energy RMSE via the ctypes evaluator; multi-model committee spread |
@@ -36,5 +38,6 @@ contract every page below assumes.
 | [`submit`](submit.md) | **implemented** | Generic Slurm submit/status/cancel/dry-run |
 | [`al-run`](al-run.md) | **implemented** | Launch al_driver's own active-learning loop as a detached background process |
 | [`al-select`](al-select.md) | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` |
+| [`al-merge`](al-merge.md) | **implemented** | Merge labeled AL frames into the training set (theory check, fixed holdout, cycles) |
 
 All stages are implemented.

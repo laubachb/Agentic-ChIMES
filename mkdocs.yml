@@ -74,6 +74,7 @@ nav:
           - data-fetch: commands/data-fetch.md
           - data-generate: commands/data-generate.md
           - data-curate: commands/data-curate.md
+          - fingerprint: commands/fingerprint.md
           - dataset-select: commands/dataset-select.md
           - qe-relabel: commands/qe-relabel.md
       - Hyperparameters and fitting:
@@ -83,12 +84,14 @@ nav:
           - amat-build: commands/amat-build.md
           - solve: commands/solve.md
           - weights: commands/weights.md
+          - hierarch: commands/hierarch.md
           - model-build: commands/model-build.md
           - sweep: commands/sweep.md
           - auto-build: commands/auto-build.md
           - evaluate: commands/evaluate.md
       - Active learning:
           - al-select: commands/al-select.md
+          - al-merge: commands/al-merge.md
           - al-run: commands/al-run.md
       - MD, performance, deployment:
           - lammps-run: commands/lammps-run.md

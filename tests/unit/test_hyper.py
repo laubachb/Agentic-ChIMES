@@ -268,3 +268,46 @@ def test_select_prefer_richer_takes_the_largest_tied_model():
     assert cheap["chosen"]["n_params"] == 40
     assert rich["chosen"]["n_params"] == 600
     assert "richer" in rich["reason"] or rich["chosen"] is rich["best"]
+
+
+def test_stress_stage_picks_lowest_pressure_error_among_tied_weights(tmp_path, monkeypatch):
+    frames = _fcc_frames()
+    xyzf_io.write_xyzf(frames, tmp_path / "train.xyzf")
+    xyzf_io.write_xyzf(frames[:3], tmp_path / "holdout.xyzf")
+    landscape = {None: (0.50, 3.3), 1.0: (0.50, 3.0), 3.0: (0.505, 2.7), 10.0: (0.60, 2.2), 30.0: (0.90, 2.1)}
+
+    def fake(task):
+        c = task["cfg"]
+        s, p = landscape[c.get("stress_weight")]
+        s += 0.01 * abs(c["order_2b"] - 12)
+        return {"key": _hyper.config_key(c), "cfg": c, "status": "done", "params": task["point_dir"] + "/params.txt",
+                "fm_setup_in": task["point_dir"] + "/fm_setup.in", "nlayers": 1, "n_params": 3 * c["order_2b"],
+                "n_equations": 5000, "train_relative_force_error": s, "holdout_relative_force_error": s,
+                "holdout_relative_force_se": 0.001, "holdout_rmse_energy_per_atom": 0.5, "holdout_rmse_force": s * 5,
+                "holdout_rmse_pressure_gpa": p, "signal": {}, "solver_alpha": 1e-5}
+
+    monkeypatch.setattr(_hyper, "run_point", fake)
+    monkeypatch.setattr(hyper_search.shutil, "copy", lambda *a, **k: None)
+    args = SimpleNamespace(
+        data_manifest=None, train_xyzf=str(tmp_path / "train.xyzf"), holdout_xyzf=str(tmp_path / "holdout.xyzf"),
+        elements=["Cu"], hyper_analysis=None, stages=["2b", "stress"], four_body="off", orders_2b=[10, 12],
+        orders_3b=None, orders_4b=None, s_maxim_2b=[5.0], s_maxim_3b=None, s_maxim_4b=None, lambda_scales=[1.0],
+        objective="force", energy_weight=0.1, tolerance=0.03, min_gain=0.05, min_signal=1e-9, exclude_inert=False,
+        max_param_ratio=0.5, fitener=False, fitstrs="ALL", stress_weights=[1.0, 3.0, 10.0, 30.0],
+        algorithm="lassolars", alpha=1e-5, masses=None, workers=1, machine=None, max_fit_seconds=60,
+        output_dir=str(tmp_path / "search"))
+    (tmp_path / "search" / "best").mkdir(parents=True)
+    res = hyper_search.run(args)
+    assert res["hyperparameters"]["stress_weight"] == 3.0
+    assert res["hyperparameters"]["fitstrs"] == "ALL"
+
+
+def test_md_cost_uses_an_effective_per_pair_cutoff():
+    base = {"cfg": {"s_maxim_2b": 8.0, "order_3b": 4, "s_maxim_3b": 7.0}, "n_params": 100,
+            "signal": {"n_2b": 20, "n_3b": 80}}
+    pairs = {**base, "cfg": {**base["cfg"], "s_maxim_3b_pairs": {"A-A": 5.0, "A-B": 6.33, "B-B": 5.5}}}
+    assert _hyper.md_cost(pairs) < _hyper.md_cost(base)
+    task = {"train_xyzf": "t", "n_train": 1, "masses": {"A": 1, "B": 2}, "thinnest": 20.0}
+    fm = _hyper.build_fm_args({**pairs["cfg"], "elements": ["A", "B"], "order_2b": 8, "s_minim": {"A-A": 1, "A-B": 1, "B-B": 1},
+                               "morse_lambda": {"A-A": 2, "A-B": 2, "B-B": 2}}, "t.xyzf", 1, task["masses"], 20.0, "out")
+    assert fm.special_maxim_3b_pairs == {"A-A": 5.0, "A-B": 6.33, "B-B": 5.5}

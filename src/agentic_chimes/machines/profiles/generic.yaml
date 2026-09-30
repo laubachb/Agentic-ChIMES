@@ -1,0 +1,31 @@
+# Generic Slurm cluster (and CI). Configure through the environment instead
+# of editing this file:
+#
+#   export CHIMES_ACCOUNT=<bank>            # sbatch -A (required to submit)
+#   export CHIMES_DEBUG_PARTITION=<name>    # default: debug
+#   export CHIMES_BATCH_PARTITION=<name>    # default: batch
+#   export CHIMES_CORES_PER_NODE=<n>        # default: 16
+#   export CHIMES_SCRATCH=<shared dir>      # job directories must live here
+#
+# hosttype none: the forks' install.sh scripts build with the compilers and
+# MPI already on PATH (load your modules first, e.g. a GCC + OpenMPI stack).
+# Copy this file and fill in modules/partitions for a permanent setup; see
+# docs/concepts/machine_profiles.md.
+name: generic
+job_system: slurm
+launcher: srun
+account: ${CHIMES_ACCOUNT}
+hosttype: none
+partitions:
+  debug: ${CHIMES_DEBUG_PARTITION:-debug}
+  batch: ${CHIMES_BATCH_PARTITION:-batch}
+default_ntasks_per_node: ${CHIMES_CORES_PER_NODE:-16}
+require_ntasks_per_node_or_exclusive: true
+poll_interval_s: 60
+modules: []
+filesystem:
+  scratch_root: ${CHIMES_SCRATCH}
+  max_small_files_per_dir: 5000
+  bulk_archive_root: null
+qe:
+  configure_extra_args: []

@@ -55,7 +55,8 @@ DEFAULTS = {
     "orders_3b": [4, 6, 8, 10],
     "orders_4b": [2, 3],  # 4-body builds scale steeply; order 4 is ~3,000+ coefficients for a binary
     "lambda_scales": [0.9, 1.0, 1.1],
-    "stages": ["2b", "3b", "4b", "exclude", "lambda", "refine"],
+    "stages": ["2b", "3b", "3b_pairs", "4b", "exclude", "lambda", "refine", "stress"],
+    "stress_weights": [1.0, 3.0, 10.0, 30.0],
 }
 
 SCHEMA = {
@@ -79,6 +80,7 @@ SCHEMA = {
         "lambda_scales": {"type": "array", "items": {"type": "number"}, "default": DEFAULTS["lambda_scales"]},
         "prefer": {"type": "string", "enum": ["cheaper", "richer"], "default": "cheaper", "description": "Among statistically tied points: cheaper = lowest estimated MD cost (a final model); richer = most coefficients (a model that will go through active learning: the literature errs toward complexity before AL and prunes once the data is final, Lindsey et al. 2025). richer also skips the exclusion stage."},
         "weights_preset": {"type": "string", "default": "uniform", "description": "Fitting weights for every fit (weights stage presets: uniform, al_driver, lindsey2020, carbon2_large, hierarchical2026). Matters when energies (or stresses) are fitted alongside forces. Changing it refits every point."},
+        "stress_weights": {"type": "array", "items": {"type": "number"}, "default": [1.0, 3.0, 10.0, 30.0], "description": "Stress-row weights the `stress` stage tries (only when fitting stresses)."},
         "smoothing": {"type": "string", "default": "CUBIC", "description": "fm_setup.in FCUTTYP for every fit: CUBIC (chimes_lsq default) or 'TERSOFF <f_O>' with 0 < f_O < 1. The cubic form multiplies one smoothing factor per cluster distance and shrinks 3-/4-body terms; published many-body ChIMES models use TERSOFF 0.5-0.75 (Lindsey et al., JCP 153, 134117, 2020). Changing it refits every point."},
         "objective": {"type": "string", "enum": ["auto", "force", "force+energy"], "default": "auto", "description": "auto = force+energy when energies are fitted, else force."},
         "energy_weight": {"type": "number", "default": 0.1, "description": "Score per kcal/mol/atom of energy RMSE, for objective force+energy."},
@@ -89,6 +91,7 @@ SCHEMA = {
         "min_gain": {"type": "number", "default": 0.05, "description": "four_body=auto runs 4b only if 3b improved the score by at least this fraction."},
         "max_param_ratio": {"type": "number", "default": 0.5, "description": "Coefficients per equation above which a point is never chosen."},
         "fitener": {"type": ["boolean", "null"], "description": "Default: data_manifest fit_hints.fitener."},
+        "fitstrs": {"type": ["string", "boolean", "null"], "description": "Fit stresses: ALL (full tensor), true (diagonal) or false. Default: data_manifest fit_hints.fitstrs. Use with a weights preset that weights stresses (hierarchical2026, carbon2_large)."},
         "algorithm": {"type": "string", "default": "lassolars"},
         "alpha": {"type": "number", "default": 1.0e-5},
         "masses": {"type": ["object", "null"]},
@@ -128,6 +131,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--lambda-scales", dest="lambda_scales", type=_floats, default=None)
     parser.add_argument("--prefer", choices=["cheaper", "richer"], default="cheaper")
     parser.add_argument("--weights-preset", dest="weights_preset", default="uniform")
+    parser.add_argument("--stress-weights", dest="stress_weights", type=_floats, default=None)
     parser.add_argument("--smoothing", default="CUBIC", help="CUBIC or 'TERSOFF <f_O>'")
     parser.add_argument("--objective", choices=["auto", "force", "force+energy"], default="auto")
     parser.add_argument("--energy-weight", dest="energy_weight", type=float, default=0.1)
@@ -138,6 +142,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--max-fit-seconds", dest="max_fit_seconds", type=float, default=600)
     parser.add_argument("--max-param-ratio", dest="max_param_ratio", type=float, default=0.5)
     parser.add_argument("--fitener", type=lambda s: s.lower() in ("1", "true", "yes"), default=None)
+    parser.add_argument("--fitstrs", default=None, help="ALL | true | false (default: data manifest fit_hints)")
     parser.add_argument("--algorithm", default="lassolars")
     parser.add_argument("--alpha", type=float, default=1.0e-5)
     parser.add_argument("--masses", type=json.loads, default=None)
@@ -244,12 +249,17 @@ def _number_density(frames) -> float:
 def _row(r):
     c = r["cfg"]
     keep = {k: c.get(k) for k in ("order_2b", "order_3b", "order_4b", "s_maxim_2b", "s_maxim_3b", "s_maxim_4b", "lambda_scale")}
+    if c.get("s_maxim_3b_pairs"):
+        keep["s_maxim_3b_pairs"] = c["s_maxim_3b_pairs"]
     for k in ("solver", "exclude_3b", "exclude_4b"):
         if c.get(k):
             keep[k] = c[k] if k == "solver" else [" ".join(e) for e in c[k]]
     keep.update({k: r.get(k) for k in ("status", "n_params", "params_per_equation", "nlayers", "holdout_relative_force_error",
                                         "holdout_relative_force_se", "holdout_rmse_force", "holdout_rmse_energy_per_atom",
-                                        "train_relative_force_error", "solver_alpha", "score", "md_cost", "key", "error")})
+                                        "train_relative_force_error", "solver_alpha", "score", "md_cost", "key", "error",
+                                        "holdout_rmse_pressure_gpa")})
+    if c.get("stress_weight") is not None:
+        keep["stress_weight"] = c["stress_weight"]
     sig = r.get("signal") or {}
     for body in ("3b", "4b"):
         if sig.get(f"signal_{body}") is not None:
@@ -291,6 +301,12 @@ def run(args) -> dict:
     fitener = getattr(args, "fitener", None)
     if fitener is None:
         fitener = bool((manifest.get("fit_hints") or {}).get("fitener", analysis.get("n_energy_equations", 0) > 0))
+    fitstrs = getattr(args, "fitstrs", None)
+    if fitstrs is None:
+        fitstrs = (manifest.get("fit_hints") or {}).get("fitstrs") or False
+    fitstrs = {True: "true", False: "false"}.get(fitstrs, str(fitstrs))
+    if fitstrs.lower() not in ("false", "true", "all"):
+        raise ValueError(f"fitstrs must be ALL, true or false, got {fitstrs!r}")
     objective = getattr(args, "objective", "auto") or "auto"
     if objective == "auto":
         objective = "force+energy" if fitener else "force"
@@ -324,6 +340,8 @@ def run(args) -> dict:
     }
     if smoothing != "CUBIC":  # only non-default values enter the cache key, so CUBIC caches stay valid
         base_cfg["fcuttyp"] = smoothing
+    if fitstrs.lower() != "false":  # same: stress-free caches stay valid
+        base_cfg["fitstrs"] = fitstrs.upper() if fitstrs.lower() == "all" else "true"
     from . import weights as _weights
 
     weights_preset = getattr(args, "weights_preset", None) or "uniform"
@@ -396,6 +414,39 @@ def run(args) -> dict:
             notes += _edge_notes("3b", current, "s_maxim_3b", [c for c in grid["s_maxim_3b"] if c <= current["cfg"]["s_maxim_2b"]])
         else:
             notes.append("3b: no 3-body model beat the 2-body model by more than the tolerance; kept 2-body only")
+
+    # ---- per-pair 3-body cutoffs: each pair at its own shell (Lindsey et al., JCTC 15, 436, 2019)
+    if "3b_pairs" in stages and current["cfg"].get("order_3b") and len(analysis["pairs"]) > 1:
+        c3 = current["cfg"]
+        g = c3["s_maxim_3b"]
+        g2 = (analysis.get("global") or {}).get("second_shell_end")
+        shells = {p: v.get("suggested", {}) for p, v in analysis["pairs"].items()}
+
+        def clamp(p, r):
+            lo = shells[p].get("first_shell_end") or 0.0
+            return round(min(max(r, lo), c3["s_maxim_2b"]), 2)
+
+        cands = []
+        own = {p: clamp(p, s.get("second_shell_end") or g) for p, s in shells.items()}
+        cands.append(own)
+        if g2:
+            cands.append({p: clamp(p, g * (s.get("second_shell_end") or g2) / g2) for p, s in shells.items()})
+        uniq = []
+        for cand in cands:
+            if cand not in uniq and any(abs(v - g) > 1e-6 for v in cand.values()):
+                uniq.append(cand)
+        if uniq:
+            res = runner.fit([{**c3, "s_maxim_3b_pairs": cand} for cand in uniq])
+            sel = pick(res + [current])
+            record("3b_pairs", res, sel)
+            if sel["chosen"]:
+                current = sel["chosen"]
+            if current["cfg"].get("s_maxim_3b_pairs"):
+                notes.append(f"3b_pairs: per-pair 3-body cutoffs {current['cfg']['s_maxim_3b_pairs']} replace the global "
+                             f"{g} A (statistically tied or better, cheaper in MD)")
+        else:
+            report_stages.append({"stage": "3b_pairs", "skipped": True,
+                                  "reason": "per-pair shell cutoffs coincide with the global 3-body cutoff"})
 
     # ---- 4-body
     gain_3b = (score_2b - current["score"]) / score_2b if score_2b else 0.0
@@ -536,6 +587,37 @@ def run(args) -> dict:
             elif current["cfg"]["order_2b"] > max(grid["orders_2b"]):
                 notes.append(f"refine moved order_2b above the 2b grid ({current['cfg']['order_2b']}); higher orders may be worth trying")
 
+    # ---- stress weight: published values (100-250) assume large cells; measure it on this data
+    if "stress" in stages and fitstrs.lower() != "false":
+        weights_try = getattr(args, "stress_weights", None) or DEFAULTS["stress_weights"]
+        cfgs = [{**current["cfg"], "stress_weight": float(w)} for w in weights_try]
+        res = runner.fit(cfgs)
+        base = current
+        base.setdefault("score", _hyper.score(base, objective, energy_weight))
+        tied = [base]
+        for r in res:
+            if r.get("status") != "done" or r.get("holdout_rmse_pressure_gpa") is None:
+                continue
+            r["score"] = _hyper.score(r, objective, energy_weight)
+            se = (_hyper.paired_se(r["holdout_per_frame_force"], base["holdout_per_frame_force"])
+                  if r.get("holdout_per_frame_force") and base.get("holdout_per_frame_force") else 0.0)
+            r["tie_margin"] = round(max(tol * base["score"], se), 5)
+            if r["score"] - base["score"] <= r["tie_margin"]:
+                tied.append(r)
+        best = min(tied, key=lambda r: (r.get("holdout_rmse_pressure_gpa") if r.get("holdout_rmse_pressure_gpa") is not None
+                                        else float("inf")))
+        if best is not base:
+            reason = (f"stress weight {best['cfg']['stress_weight']} lowered the holdout pressure error to "
+                      f"{best['holdout_rmse_pressure_gpa']:.2f} GPa (from {base.get('holdout_rmse_pressure_gpa') or float('nan'):.2f}) "
+                      "with force/energy score statistically tied")
+            current = best
+        else:
+            reason = "no stress weight improved the pressure error without a force/energy cost beyond the tie margin"
+        report_stages.append({"stage": "stress", "n_points": len(res), "reason": reason,
+                              "table": [_row(r) for r in sorted([base] + res, key=lambda r: r["cfg"].get("stress_weight") or 0)]})
+    elif "stress" in stages:
+        report_stages.append({"stage": "stress", "skipped": True, "reason": "not fitting stresses (fitstrs false)"})
+
     if inert:
         seen = sorted({(b, c) for b, c, _ in inert})
         notes.append("many-body terms with columns below min_signal of the 2-body scale at "
@@ -557,12 +639,16 @@ def run(args) -> dict:
         "pair_cutoffs": {p: [c["s_minim"][p], c["s_maxim_2b"]] for p in c["s_minim"]},
         "morse_lambda": {p: round(c["morse_lambda"][p] * c.get("lambda_scale", 1.0), 4) for p in c["morse_lambda"]},
         "special_maxim_3b": c.get("s_maxim_3b") if c.get("order_3b") else None,
+        "special_maxim_3b_pairs": c.get("s_maxim_3b_pairs") if c.get("order_3b") else None,
         "special_maxim_4b": c.get("s_maxim_4b") if c.get("order_4b") else None,
         "exclude_3b": c.get("exclude_3b") or None,
         "exclude_4b": c.get("exclude_4b") or None,
         "nlayers": final["nlayers"],
         "fcuttyp": c.get("fcuttyp", "CUBIC"),
+        "masses": runner.base["masses"],
         "fitener": c["fitener"],
+        "fitstrs": c.get("fitstrs", "false"),
+        "stress_weight": c.get("stress_weight"),
         "algorithm": c.get("solver", runner.base["algorithm"]), "alpha": final.get("solver_alpha", runner.base["alpha"]),
         "weights": c.get("weights_preset", "uniform"),
     }
@@ -574,6 +660,10 @@ def run(args) -> dict:
     if final["holdout_relative_force_error"] > 0.3:
         notes.append(f"final relative force error {final['holdout_relative_force_error']:.2f} is high: the data (coverage, size, "
                      "consistency) is more likely the limit than these hyperparameters")
+    if final.get("holdout_frames_below_inner_cutoff"):
+        notes.append(f"{final['holdout_frames_below_inner_cutoff']} holdout frame(s) have contacts inside the inner cutoff "
+                     "(penalty region) and dominate the holdout error; re-split with data-curate/dataset-select, which "
+                     "keep each pair's closest contact in training")
     if smoothing == "CUBIC" and any(s in stages for s in ("3b", "4b")):
         notes.append("many-body terms were fitted with CUBIC smoothing, which shrinks 3-/4-body contributions; published "
                      "many-body ChIMES models use TERSOFF 0.5-0.75 (Lindsey et al. 2020). A 'no gain' from 3-/4-body terms "

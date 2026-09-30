@@ -50,6 +50,31 @@ chimes-agent data-fetch --source runs/OUTCAR_1,runs/OUTCAR_2 --elements Cu,Zr \
   match the Hub's checksum, yet the parquet pages do not decode.
   `UNEP_v1_2023_train` is one.
 
+## Stresses
+
+Stresses are kept whenever the source has them, stored in ChIMES' xyzf
+convention: GPa, **pressure sign** (positive = compressed). They are needed
+to fit models that hold density or pressure.
+
+- **ASE files** (Cauchy sign, eV/Å³) are negated and converted.
+- **ColabFit** stores `cauchy_stress` with whatever sign the source used.
+  MatPES, for example, carries VASP's pressure sign despite the column name.
+  So every fetch checks the sign on the data itself: within each
+  composition, pressure must fall as volume per atom rises.
+  - `ok`: the stresses are kept;
+  - `flipped`: they are negated;
+  - `unverified` (fewer than 5 frames of one composition spanning volumes):
+    they are dropped rather than fitted with an unknown sign.
+- The result is reported as `stress_sign_check` and in
+  `provenance.json` → `stresses`.
+- **QE labels** (`qe-relabel --collect`) carry QE's stress (kbar, pressure
+  sign), converted to GPa.
+
+On the Cu-Zr MatPES pool (169 frames) the check gave a median correlation of
+−0.77 over 7 compositions: verified. An independent check agrees: the Cu-Zr
+model, never fitted to stresses, predicts pressures correlated +0.65 with
+the converted DFT values.
+
 ## Flags
 
 - `--source` (required): `colabfit:<repo_id>` or path(s), comma-separated

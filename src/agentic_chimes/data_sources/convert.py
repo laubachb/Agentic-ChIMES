@@ -18,7 +18,13 @@ from ..io.xyzf import Frame
 ORTHO_TOL = 1e-6
 
 
-def to_frame(symbols, cell, positions, energy_ev=None, forces_ev_ang=None) -> Frame:
+def to_frame(symbols, cell, positions, energy_ev=None, forces_ev_ang=None, stress_ev_ang3=None,
+             stress_sign: str = "cauchy") -> Frame:
+    """stress_ev_ang3: 3x3 stress in eV/A^3 in the input orientation, with
+    `stress_sign` "cauchy" (tensile positive: ASE) or "pressure" (compressive
+    positive: VASP-derived records such as MatPES in ColabFit). Rotated with
+    the cell and stored in ChIMES' convention (GPa, pressure sign; see
+    converters/units.py)."""
     from ase.cell import Cell
 
     cell = np.asarray(cell, dtype=float)
@@ -29,6 +35,15 @@ def to_frame(symbols, cell, positions, energy_ev=None, forces_ev_ang=None) -> Fr
         forces = np.zeros_like(pos)
     else:
         forces = units.ev_per_ang_to_hartree_per_bohr(np.asarray(forces_ev_ang, dtype=float) @ Q.T)
+
+    stress = None
+    if stress_ev_ang3 is not None:
+        sigma = np.asarray(stress_ev_ang3, dtype=float).reshape(3, 3)
+        if stress_sign not in ("cauchy", "pressure"):
+            raise ValueError(f"stress_sign must be cauchy or pressure, got {stress_sign!r}")
+        stress = units.cauchy_ev_ang3_to_chimes_gpa(Q @ sigma @ Q.T)
+        if stress_sign == "pressure":
+            stress = [-x for x in stress]
 
     if np.all(np.abs(rcell - np.diag(np.diag(rcell))) < ORTHO_TOL):
         box, non_ortho = [float(x) for x in np.diag(rcell)], False
@@ -41,6 +56,7 @@ def to_frame(symbols, cell, positions, energy_ev=None, forces_ev_ang=None) -> Fr
         forces=np.asarray(forces).tolist(),
         box=box,
         non_ortho=non_ortho,
+        stress=stress,
         energy=None if energy_ev is None else float(units.ev_to_kcal_per_mol(energy_ev)),
     )
 
@@ -77,3 +93,30 @@ def unique_pairs(atoms, cutoff: float):
     first_nonzero = np.where(S[:, 0] != 0, S[:, 0], np.where(S[:, 1] != 0, S[:, 1], S[:, 2]))
     keep = (i < j) | ((i == j) & (first_nonzero > 0))
     return i[keep], j[keep], d[keep]
+
+
+def stress_sign_check(frames, min_group: int = 5) -> dict:
+    """Is the stored stress sign right? Within one composition, pressure
+    (mean of the xyzf stress diagonal) must fall as volume per atom rises.
+    Returns the median correlation over compositions with >= min_group
+    stressed frames and a verdict: "ok" (median < -0.3), "flipped"
+    (> +0.3) or "unverified"."""
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for f in frames:
+        if f.stress is None or len(f.stress) < 3:
+            continue
+        cell = np.asarray(f.box if f.non_ortho else np.diag(f.box), dtype=float)
+        groups[tuple(sorted(f.symbols))].append((abs(np.linalg.det(cell)) / f.natoms, sum(f.stress[:3]) / 3))
+    cors = []
+    for rows in groups.values():
+        if len(rows) >= min_group:
+            v, p = np.asarray(rows).T
+            if np.std(v) > 0 and np.std(p) > 0:
+                cors.append(float(np.corrcoef(v, p)[0, 1]))
+    if not cors:
+        return {"verdict": "unverified", "median_corr": None, "n_groups": 0}
+    med = float(np.median(cors))
+    verdict = "ok" if med < -0.3 else "flipped" if med > 0.3 else "unverified"
+    return {"verdict": verdict, "median_corr": round(med, 3), "n_groups": len(cors)}

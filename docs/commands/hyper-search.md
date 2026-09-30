@@ -34,10 +34,12 @@ Each stage is a small grid; later stages hold earlier choices fixed.
 |---|---|---|
 | `2b` | `orders_2b` × `s_maxim_2b`, no many-body terms | always |
 | `3b` | `orders_3b` × `s_maxim_3b` (≤ 2-body cutoff) | it beats the 2-body model beyond the tie margin |
+| `3b_pairs` | per-pair 3-body cutoffs at each pair's own shell (two candidates) | tied with the global cutoff and cheaper in MD |
 | `4b` | `orders_4b` (2, 3) × `s_maxim_4b` (first-shell end, midway; ≤ 3-body cutoff) × `four_body_solvers` (default: the search solver only); `--four-body auto` runs it only if 3-body improved the score by ≥ `min_gain` | it beats the 3-body model beyond the tie margin |
 | `exclude` | leave-one-type-out over the model's 3-/4-body cluster types (`EXCLUDE` blocks), `exclude_rounds` (2) greedy rounds | removing the type(s) leaves the fit tied with both the current model and the model that entered the stage |
 | `lambda` | one scale factor on every pair's λ | it beats scale 1.0 by more than `tolerance` |
 | `refine` | `order_2b` ± 2 with many-body terms fixed | cheapest tied point |
+| `stress` | `stress_weights` (1, 3, 10, 30), only when fitting stresses | lowest holdout pressure error among weights tied on force/energy |
 
 Cutoff candidates come from the RDF shells (`hyper-analyze`); many-body
 candidates reach toward the second shell because at the first shell ChIMES'
@@ -103,6 +105,31 @@ when energies matter more than forces, and compare the two with
 - **Runaway builds**: `--max-fit-seconds` (600) abandons a design-matrix
   build (many-body cutoffs on 1-2 Å-wide cells can take very long); the
   point is reported as `timeout`.
+
+## Per-pair 3-body cutoffs (`3b_pairs` stage)
+
+After the `3b` stage the search tries per-pair 3-body cutoffs: each pair at
+its own second-shell end, and the global cutoff scaled by each pair's shell
+position. Both are clamped between the pair's first shell and the 2-body
+cutoff. For water these matched a uniform cutoff at lower cost (Lindsey
+2019). A per-pair set replaces the global cutoff only when statistically
+tied and cheaper in MD. It is recorded as `special_maxim_3b_pairs` in
+`hyper_choice.json`.
+
+## Stresses (`--fitstrs`, `stress` stage)
+
+`--fitstrs` defaults to the data manifest's hint (`ALL` when every frame has
+a stress). When stresses are fitted, the final `stress` stage refits the
+chosen model at stress weights `--stress-weights` (1, 3, 10, 30). It takes
+the lowest holdout pressure error among weights whose force/energy score is
+statistically tied with the unweighted model, and records `stress_weight`.
+
+Published stress weights (100-250) assume cells of tens to hundreds of
+atoms. On 2-atom MatPES Cu-Zr cells, a weight of 100 wrecked the fit
+(relative force error 0.33 → 1.18), and a fixed rule scaling it by atoms
+per cell did not work either. So the weight is measured. On that data the
+stage chose 3, which cut the holdout pressure error from 4.43 to 2.88 GPa
+with the force error unchanged (0.449 → 0.450).
 
 ## Cheaper or richer (`--prefer`)
 

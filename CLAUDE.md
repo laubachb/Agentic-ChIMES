@@ -10,10 +10,10 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 - One subcommand per stage. **`chimes-agent <stage> --describe` is the source
   of truth for a stage's inputs/outputs** — read it instead of guessing flags.
   Stages: `setup`, `doctor`, `study`, `usage`, `data-search`, `data-fetch`, `data-generate`,
-  `data-curate`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
+  `data-curate`, `fingerprint`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
   `hyper-search`, `fm-setup-gen`,
-  `amat-build`, `solve`, `weights`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-run`.
+  `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate`,
+  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-merge`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -50,6 +50,7 @@ Load the matching skill before starting that kind of task:
 - `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
 - `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
 - `chimes-active-learning` — `al-select` / `al-run` / stabilizing a model
+- `chimes-md-validation` — MD checks of candidate models, fingerprint coverage, choosing between tied models
 - `chimes-literature` — published ChIMES methodology (cutoffs, λ, smoothing,
   orders, weights, AL, validation, accuracy benchmarks) with citations
 
@@ -59,7 +60,10 @@ generate → curate → `data_manifest.json`; returns decisions it cannot make),
 judged result → `hyper_choice.json`; returns Slurm jobs for approval),
 `chimes-benchmark` (CPU-hour accounting + scaling benchmark → sizing
 recipe), `chimes-report-writer` (collates the study into `REPORT.md`),
-`chimes-job-monitor` (cheap Slurm/log status checks — delegate
+`chimes-md-validator` (MD stability, close contacts, RDF, fingerprint
+coverage → which model, or "needs active learning"),
+`chimes-active-learner` (active-learning rounds: harvest → label → merge →
+refit → re-validate, with a stopping rule), `chimes-job-monitor` (cheap Slurm/log status checks — delegate
 waiting-and-checking to it) and `chimes-fit-reviewer` (independent read of a
 finished sweep/evaluate result before you recommend a model).
 

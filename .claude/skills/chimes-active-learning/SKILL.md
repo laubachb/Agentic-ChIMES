@@ -1,11 +1,55 @@
 ---
 name: chimes-active-learning
-description: Select diverse configurations for relabeling and run ChIMES active learning with al_driver. Use when the user wants to improve or stabilize a model with more data, asks about al-select or al-run, wants the next batch of configs to send to QE, or mentions active learning / ALC cycles / unstable MD.
+description: Improve or stabilize a ChIMES model with active learning - toolkit-managed rounds (md-check harvest, fingerprint novelty, al-select, qe-relabel, al-merge, refit at the chosen hyperparameters with n/I weight decay, re-validate, fingerprint stopping) or al_driver's unattended loop (al-run). Use when the user wants to improve or stabilize a model with more data, asks about al-select/al-run/al-merge, wants the next batch of configs to label, or mentions active learning / ALC cycles / unstable MD. The chimes-active-learner subagent follows this playbook.
 ---
 
 # Active learning
 
-Two different tools; pick by scope.
+## Toolkit-managed rounds (the default)
+
+One round, in `<study>/03_al/round<k>/`, each step a stage call:
+
+1. **Candidates.** Run `md-check` with the current model at the target
+   temperatures (Slurm; dry run first). `run/harvest.xyzf` holds up to 20
+   close-contact and 20 other frames per run.
+2. **Prioritize.** Run `fingerprint --reference-xyzf <train> --candidates-xyzf
+   harvest.xyzf`. `novel.xyzf` holds the frames outside the training
+   distribution. If the pool is still large, run `al-select` on it (energy
+   histogram diversity).
+3. **Label.** Run `qe-relabel` with **exactly the base set's QE settings**
+   (from `provenance.json`). This is a Slurm submission: dry run, approval,
+   then `--collect`. Optionally `data-curate --no-holdout` on the labeled
+   pool to drop broken frames.
+4. **Merge.** Run `al-merge --data-manifest <current manifest> --new-xyzf
+   <labeled.xyzf> --cycle k`. It checks the level of theory, keeps the
+   holdout fixed, and writes `train.xyzf`, `frame_cycles.json` and a new
+   `data_manifest.json`.
+5. **Refit at the same hyperparameters.** Refit with:
+   - `fm-setup-gen --hyper-choice 02_fit/search/best/hyper_choice.json
+     --trjfile <merged train.xyzf> --nframes N`;
+   - `amat-build`;
+   - `weights --preset <study preset> [--stress-method '["A",[w]]']
+     --frame-cycles frame_cycles.json --decay-cycles <n>`;
+   - `solve --weights weights.dat`.
+
+   Re-search hyperparameters only when the data has grown a lot. Before
+   active learning the literature errs toward complexity (`--prefer richer`)
+   and prunes at the end.
+6. **Re-validate.** `evaluate` on the unchanged holdout, then `md-check` and
+   `fingerprint` again.
+
+**Stop** when all of these hold, and say which held:
+
+- stable at every target temperature;
+- `below_inner_cutoff_frames` = 0;
+- the harvest is no longer distinguishable from the training set by
+  fingerprint, or ChIMES-MD is indistinguishable from DFT-MD at a state
+  point (Laubach 2026);
+- or the user's budget is reached.
+
+Published runs converged in about 8 cycles (Lindsey 2020).
+
+## Tools for single steps
 
 ## `al-select` — one diverse batch (standalone)
 
@@ -74,12 +118,11 @@ test is `codes/al_driver-LLfork/examples/simple_iter_single_statepoint-lmp-test/
 - **When to stop.** Published practice is stable MD plus RDF, equation of
   state and dynamics consistent with DFT. Quantitatively, stop when
   ChIMES-sampled configurations are indistinguishable from DFT ones by
-  cluster-graph fingerprint (Laubach 2026 JCIM). The fingerprint tool
-  ships in chimes_calculator (`chimesFF/src/FP`) but is not wrapped here.
+  cluster-graph fingerprint (Laubach 2026 JCIM): the `fingerprint` stage.
 - Multi-element systems can reuse fitted single-element blocks and fit only
   the cross terms (hierarchical transfer learning, Lindsey 2026, npj Comput.
-  Mater. 12, 18). al_driver 2.0 supports this (`src/hierarch.py`); the
-  toolkit does not expose it yet.
+  Mater. 12, 18). The `hierarch` stage does this (`--subtract`, fit the
+  cross terms, `--combine`).
 
 ## Choosing
 

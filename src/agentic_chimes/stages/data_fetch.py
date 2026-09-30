@@ -132,18 +132,49 @@ def _fetch_colabfit(repo_id, args, keep):
             dropped["missing_energy_or_forces"] += 1
             continue
         symbols = [chemical_symbols[z] for z in row["atomic_numbers"]]
+        stress = None if relabel else row.get("cauchy_stress")
+        if stress is not None and row.get("cauchy_stress_volume_normalized"):
+            # stored multiplied by the cell volume (a virial): divide it back out
+            import numpy as np
+
+            stress = np.asarray(stress, dtype=float) / abs(np.linalg.det(np.asarray(row["cell"], dtype=float)))
         frames.append(convert.to_frame(
             symbols, row["cell"], row["positions"],
             energy_ev=None if relabel else row["energy"],
             forces_ev_ang=None if relabel else row["atomic_forces"],
+            stress_ev_ang3=stress, stress_sign="pressure",  # checked below: ColabFit conventions vary by dataset
         ))
         ids.append(row.get("configuration_id"))
         methods[row.get("method")] += 1
         software[row.get("software")] += 1
 
+    stress_check = _settle_stress_sign(frames)
     source_meta = {k: entry.get(k) for k in ("name", "license", "doi", "authors", "links", "publication_year", "description")}
     theory = {"methods": dict(methods), "software": dict(software)}
+    source_meta = {**source_meta, "_stress_sign_check": stress_check}
     return (frames, ids, dict(dropped), source_meta, theory), entry, scan_report
+
+
+def _settle_stress_sign(frames) -> dict:
+    """ColabFit stores `cauchy_stress` with whatever sign the source used
+    (MatPES: VASP's pressure sign, despite the name). Verify on the data and
+    fix it; drop stresses whose sign cannot be verified rather than fit them."""
+    if not any(f.stress is not None for f in frames):
+        return {"verdict": "no stresses"}
+    check = convert.stress_sign_check(frames)
+    if check["verdict"] == "flipped":
+        for f in frames:
+            if f.stress is not None:
+                f.stress = [-x for x in f.stress]
+        check["action"] = "negated all stresses (stored with the Cauchy sign)"
+    elif check["verdict"] == "unverified":
+        for f in frames:
+            f.stress = None
+        check["action"] = ("dropped stresses: sign could not be verified (needs >= 5 frames of one composition "
+                           "spanning volumes); fit without stresses or supply them with a known convention")
+    else:
+        check["action"] = "kept (pressure sign verified)"
+    return check
 
 
 def _fetch_local(paths, args, keep):
@@ -162,14 +193,18 @@ def _fetch_local(paths, args, keep):
                 if not all(atoms.pbc):
                     dropped["not_3d_periodic"] += 1
                     continue
-                energy = forces = None
+                energy = forces = stress = None
                 if not relabel:
                     try:
                         energy, forces = atoms.get_potential_energy(), atoms.get_forces()
                     except Exception:  # noqa: BLE001 - ASE raises various types when no calculator results exist
                         dropped["missing_energy_or_forces"] += 1
                         continue
-                fr = convert.to_frame(atoms.get_chemical_symbols(), atoms.cell[:], atoms.positions, energy, forces)
+                    try:
+                        stress = atoms.get_stress(voigt=False)  # ASE: Cauchy sign, eV/A^3
+                    except Exception:  # noqa: BLE001 - no stress in the file is normal
+                        stress = None
+                fr = convert.to_frame(atoms.get_chemical_symbols(), atoms.cell[:], atoms.positions, energy, forces, stress)
             elif relabel:
                 fr.energy = None
                 fr.forces = [[0.0, 0.0, 0.0]] * fr.natoms
@@ -210,6 +245,10 @@ def run(args) -> dict:
         return {"source": source, "elements": sorted(target), "count_only": True, **scan_report}
 
     frames, ids, dropped, source_meta, theory = payload
+    stress_check = source_meta.pop("_stress_sign_check", None)
+    if stress_check is None:  # local files: ASE's convention is known; still sanity-check it
+        stress_check = (convert.stress_sign_check(frames) if any(f.stress is not None for f in frames)
+                        else {"verdict": "no stresses"})
     if not frames:
         raise ValueError(f"nothing left to write after filtering (dropped: {dropped})")
 
@@ -228,6 +267,8 @@ def run(args) -> dict:
         "composition_rule": getattr(args, "composition_rule", "subset"),
         "scan": scan_report,
         "dropped": dropped,
+        "stresses": {"n_frames_with_stress": sum(1 for f in frames if f.stress is not None),
+                     "units": "GPa, pressure sign (ChIMES)", "sign_check": stress_check},
         "n_frames": len(frames),
         "frame_ids": ids,
         "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -246,5 +287,7 @@ def run(args) -> dict:
         "n_non_orthorhombic": sum(1 for f in frames if f.non_ortho),
         "natoms_range": [min(f.natoms for f in frames), max(f.natoms for f in frames)],
         "dropped": dropped,
+        "n_with_stress": sum(1 for f in frames if f.stress is not None),
+        "stress_sign_check": stress_check,
         "license": source_meta.get("license"),
     }

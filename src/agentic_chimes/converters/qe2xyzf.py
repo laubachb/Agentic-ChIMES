@@ -31,6 +31,8 @@ from . import units
 _ENERGY_RE = re.compile(r"^!\s+total energy\s+=\s+(-?[\d.]+)\s+Ry", re.MULTILINE)
 _FORCE_RE = re.compile(r"^\s*atom\s+(\d+)\s+type\s+(\d+)\s+force\s*=\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)", re.MULTILINE)
 _CONVERGED_RE = re.compile(r"convergence has been achieved")
+# "total   stress  (Ry/bohr**3)                   (kbar)     P=      -12.34" then 3 rows of 3 Ry/bohr^3 + 3 kbar
+_STRESS_RE = re.compile(r"total\s+stress\s+\(Ry/bohr\*\*3\)\s+\(kbar\)\s+P=\s*(-?[\d.]+)\s*\n((?:\s*-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+\s+-?[\d.]+\s*\n){3})")
 
 
 @dataclass
@@ -38,6 +40,7 @@ class QEResult:
     converged: bool
     energy_ry: Optional[float]
     forces_ry_bohr: Optional[list]  # ordered by QE atom index (1-based in the output, 0-based here)
+    stress_kbar: Optional[list] = None  # 3x3, QE's pressure sign (P = trace/3)
 
 
 def parse_pwx_output(text: str) -> QEResult:
@@ -55,7 +58,13 @@ def parse_pwx_output(text: str) -> QEResult:
         ordered = sorted(force_matches, key=lambda m: int(m[0]))
         forces_ry_bohr = [[float(fx), float(fy), float(fz)] for _idx, _typ, fx, fy, fz in ordered]
 
-    return QEResult(converged=converged, energy_ry=energy_ry, forces_ry_bohr=forces_ry_bohr)
+    stress_kbar = None
+    stress_matches = _STRESS_RE.findall(text)
+    if stress_matches:
+        rows = stress_matches[-1][1].strip().splitlines()
+        stress_kbar = [[float(x) for x in r.split()[3:6]] for r in rows]
+
+    return QEResult(converged=converged, energy_ry=energy_ry, forces_ry_bohr=forces_ry_bohr, stress_kbar=stress_kbar)
 
 
 def frame_from_qe_output(base_frame, pwx_stdout: str):
@@ -89,5 +98,9 @@ def frame_from_qe_output(base_frame, pwx_stdout: str):
         forces=forces_hartree_bohr,
         box=base_frame.box,
         non_ortho=base_frame.non_ortho,
+        stress=None if result.stress_kbar is None else [
+            result.stress_kbar[0][0] * units.KBAR_TO_GPA, result.stress_kbar[1][1] * units.KBAR_TO_GPA,
+            result.stress_kbar[2][2] * units.KBAR_TO_GPA, result.stress_kbar[0][1] * units.KBAR_TO_GPA,
+            result.stress_kbar[0][2] * units.KBAR_TO_GPA, result.stress_kbar[1][2] * units.KBAR_TO_GPA],
         energy=energy_kcal_mol,
     ), result.converged

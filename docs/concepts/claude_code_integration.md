@@ -45,6 +45,7 @@ flags rather than duplicating them, so they don't go stale:
 | `chimes-build-model` | hands-on fitting, choosing cutoffs/orders, sweeps, diagnosing a bad fit |
 | `chimes-hpc-jobs` | anything touching Slurm, QE, DLARS, lustre quota, or a job that seems stuck |
 | `chimes-active-learning` | `al-select`, `al-run`, "improve/stabilize the model with more data" |
+| `chimes-md-validation` | "is this model stable in MD", choosing between tied models, fingerprint coverage (the MD validator's playbook) |
 | `chimes-literature` | published ChIMES practice (cutoffs, λ, smoothing, orders, weights, AL, validation, accuracy) with citations; consulted by every agent |
 
 **Subagents:**
@@ -63,6 +64,12 @@ flags rather than duplicating them, so they don't go stale:
   curates them, and returns `data_manifest.json` plus any decision it
   can't make (label source, QE submission, which it only dry-runs). See
   [The data phase](data_curation.md).
+- `chimes-md-validator` — MD validation: `md-check` of the chosen and tied
+  models (stability, close contacts, RDF vs DFT), fingerprint coverage, and
+  a verdict: use a model, choose between models, or needs active learning.
+- `chimes-active-learner` — active-learning rounds (harvest, fingerprint
+  novelty, QE labeling for approval, `al-merge`, refit with n/I weight decay,
+  re-validation) with an explicit stopping rule.
 - `chimes-job-monitor` — read-only, runs on the small fast model. Claude
   hands it a job id or directory and gets back a ten-line status instead of
   raw `squeue`/`sacct`/log output. This is the right place for "wait and

@@ -27,6 +27,15 @@ export CHIMES_ACCOUNT=<your Slurm bank / TACC allocation>
 |---|---|---|
 | `dane` | `${CHIMES_ACCOUNT:-pls2}` | `/p/lustre2/${USER}` |
 | `stampede3` | `${CHIMES_ACCOUNT}` (required) | `${SCRATCH}` |
+| `generic` | `${CHIMES_ACCOUNT}` (required) | `${CHIMES_SCRATCH}` |
+
+`generic` is for any Slurm cluster without a bundled profile, and for CI.
+It builds the forks with the compilers and MPI already on your PATH
+(`hosttype: none`: the forks' `install.sh` scripts run without a
+`modfiles/*.mod`). Partitions and cores come from `CHIMES_DEBUG_PARTITION`,
+`CHIMES_BATCH_PARTITION` and `CHIMES_CORES_PER_NODE` (defaults debug,
+batch, 16). Load a compiler + MPI stack, then run
+`chimes-agent setup --machine generic` and `chimes-agent doctor --machine generic`.
 
 A profile whose account is empty refuses to render a job and tells you to
 set `CHIMES_ACCOUNT`.

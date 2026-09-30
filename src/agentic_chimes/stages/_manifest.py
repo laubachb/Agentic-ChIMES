@@ -92,7 +92,7 @@ def begin(output_dir: Path, stage: str, input_dict: dict, *, force: bool = False
     if prior is not None and not force:
         if prior.get("input_hash") == input_hash and prior.get("status") == "done":
             return "short_circuit", prior
-        if prior.get("input_hash") != input_hash:
+        if prior.get("input_hash") != input_hash and prior.get("status") != "failed":  # a failed run protects nothing
             changed = sorted(p for p, sig in (prior.get("input_files") or {}).items() if files.get(p, sig) != sig)
             why = f"input file(s) changed since that run: {changed}" if changed else "different inputs"
             raise InputMismatch(

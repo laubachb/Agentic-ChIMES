@@ -67,6 +67,16 @@ spread across models of each frame's predicted energy: the plug-in point
 for a future uncertainty-based active-learning selector. It is not used by
 `al-select`; see `docs/concepts/qm_driver_plugins.md`.
 
+### Stresses and the penalty region
+
+- `rmse_stress_gpa` (all six components) and `rmse_pressure_gpa` are
+  reported when the holdout frames carry stresses (GPa, pressure sign).
+  `n_frames_with_stress` counts them. chimes_calculator's stress is −dE/dV
+  (checked by finite differences to 1e-7), converted from kcal/mol/Å³.
+- `n_frames_below_inner_cutoff`: holdout frames with a contact inside the
+  model's inner cutoff. There the repulsive penalty dominates the error. A
+  warning says so, because the fix is in the data split, not the model.
+
 ## Units
 
 Training/holdout `.xyzf` forces are **hartree/bohr** (ChIMES

@@ -37,12 +37,14 @@ directory so login-node CPU time is recorded automatically.
 | 2 | Data selection and curation | **`chimes-data-curator`** | `01_data/curate/data_manifest.json` |
 | 3 | Hyperparameter search (cutoffs, λ, orders, 4-body, exclusions) | **`chimes-hyperparameter-tuner`** | `02_fit/search/best/` + `HYPER_REPORT.md` |
 | 4 | Build/check the model (default weighting) | you + `chimes-fit-reviewer` | final `params.txt` registered |
-| 5 | Active learning | not yet an agent: `chimes-active-learning` skill | stabilized model |
-| 6 | MD validation | not yet an agent: `md-check` (candidates, stability, RDF, AL harvest) + `lammps-run` | `04_md/*` registered as `md_runs` |
+| 5 | Active learning | **`chimes-active-learner`** | stabilized model, `03_al/AL_LOG.md` |
+| 6 | MD validation | **`chimes-md-validator`** | `04_md/MD_REPORT.md`, runs registered as `md_runs` |
 | 7 | Benchmark + compute accounting | **`chimes-benchmark`** | `05_bench/benchmark.json`, `usage/usage_report.json` |
 | 8 | Deploy + final report | `deploy`, then **`chimes-report-writer`** | `06_deploy/MODEL_CARD.md`, `REPORT.md` |
 
-An MD agent (candidate generation, stability checks) is planned.
+Phases 5 and 6 interleave: MD validation of the fitted model decides whether
+active learning is needed, and each active-learning round ends with MD
+validation.
 
 ## Literature
 
@@ -103,11 +105,18 @@ For a model that will go through active learning, ask the tuner for
 orthorhombic frames; with triclinic data use the stage-by-stage route.
 Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 
-## 5. Active learning
+## 5-6. MD validation and active learning
 
-New frames must be labeled with exactly the level of theory in
-`data_manifest.json` (same QE settings hash in `provenance.json`); curate
-each round's labels with the base data using the same checks.
+- After the fit, delegate to `chimes-md-validator`: the chosen model and its
+  tied runners-up, the user's temperatures, and DFT-MD reference frames if
+  any exist. Its verdict is "use X", "choose X over Y", or "needs active
+  learning" plus a first batch.
+- For active learning, delegate to `chimes-active-learner` with the manifest,
+  `hyper_choice.json`, the base QE settings and the labeling budget. Each
+  round returns QE (and md-check) jobs for approval, then resumes. Resume the
+  same agent (SendMessage) between rounds.
+- New frames must use exactly the base level of theory; `al-merge` enforces
+  this, and the holdout never changes.
 
 ## 6-8. Validate, benchmark, deploy, report
 

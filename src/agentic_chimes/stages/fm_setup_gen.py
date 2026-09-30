@@ -26,7 +26,7 @@ SCHEMA = {
         "trjfile": {"type": "string", "description": "Path to the .xyzf training trajectory (written as-is into TRJFILE; use an absolute path)."},
         "nframes": {"type": "integer"},
         "elements": {"type": "array", "items": {"type": "string"}},
-        "masses": {"type": "object", "additionalProperties": {"type": "number"}, "description": "element -> amu; default 1.0 if omitted."},
+        "masses": {"type": "object", "additionalProperties": {"type": "number"}, "description": "element -> amu; default: standard atomic masses (ase). LAMMPS matches atom types by mass, so keep these identical across fits of one model."},
         "charges": {"type": "object", "additionalProperties": {"type": "number"}, "description": "element -> fixed charge; default 0.0."},
         "order": {"type": "object", "description": '{"2": N, "3": N, "4": N (optional)}'},
         "cheby_range": {"type": "array", "items": {"type": "number"}, "default": [-1, 1]},
@@ -45,10 +45,15 @@ SCHEMA = {
         "fitpovr": {"type": "boolean", "default": False},
         "chbtype": {"type": "string", "default": "MORSE"},
         "fcuttyp": {"type": "string", "default": "CUBIC"},
+        "exclude_1b": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "string"}}, "description": "Hierarchical fits: element types whose 1-body energy comes from fixed element models, e.g. [[\"Cu\"], [\"Zr\"]]."},
+        "exclude_2b": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "string"}}, "description": "Hierarchical fits: pure pairs to leave to element models, e.g. [[\"Cu\",\"Cu\"], [\"Zr\",\"Zr\"]]."},
+        "hierarc": {"type": "boolean", "default": False, "description": "Write `# HIERARC # true` (hierarchical fit; see the hierarch stage)."},
         "exclude_3b": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
         "exclude_4b": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
         "special_maxim_3b": {"type": ["number", "null"], "description": "Overrides the 2-body S_MAXIM for all 3-body clusters (documented ChIMES practice: a shorter 3-body outer cutoff, the 1st non-bonded shell)."},
         "special_maxim_4b": {"type": ["number", "null"], "description": "Same, for 4-body clusters."},
+        "hyper_choice": {"type": ["string", "null"], "description": "hyper_choice.json from hyper-search: fills elements, order, cutoffs, lambdas, exclusions, nlayers, fitener/fitstrs and smoothing (explicit inputs win; solver keys are ignored). Use it to refit the chosen model on new data, e.g. after al-merge."},
+        "special_maxim_3b_pairs": {"type": ["object", "null"], "description": "Per-pair 3-body outer cutoffs {\"A-B\": r}: each pair of a triplet uses its own cutoff (SPECIAL 3B S_MAXIM: SPECIFIC). Takes precedence over special_maxim_3b."},
         "special_blocks": {"type": "array", "description": "Raw io/fm_setup.py-shaped SPECIAL blocks, for anything special_maxim_3b/4b don't cover (e.g. per-cluster SPECIFIC values, S_MINIM overrides)."},
     },
 }
@@ -76,6 +81,8 @@ def add_arguments(parser) -> None:
     parser.add_argument("--fcuttyp", default="CUBIC")
     parser.add_argument("--s-delta", dest="s_delta", type=float, default=0.01)
     parser.add_argument("--special-maxim-3b", dest="special_maxim_3b", type=float, default=None)
+    parser.add_argument("--hyper-choice", dest="hyper_choice", default=None)
+    parser.add_argument("--special-maxim-3b-pairs", dest="special_maxim_3b_pairs", type=json.loads, default=None)
     parser.add_argument("--special-maxim-4b", dest="special_maxim_4b", type=float, default=None)
 
 
@@ -100,7 +107,7 @@ def _build_params(args_dict: dict) -> dict:
     order = args_dict["order"]
 
     atom_types = [
-        {"idx": i + 1, "symbol": el, "charge": float(charges.get(el, 0.0)), "mass": float(masses.get(el, 1.0))}
+        {"idx": i + 1, "symbol": el, "charge": float(charges.get(el, 0.0)), "mass": float(masses.get(el, _standard_mass(el)))}
         for i, el in enumerate(elements)
     ]
 
@@ -145,6 +152,11 @@ def _build_params(args_dict: dict) -> dict:
         params["order4"] = int(order["4"])
         cheby_range = args_dict.get("cheby_range", [-1, 1])
         params["cheby_min"], params["cheby_max"] = float(cheby_range[0]), float(cheby_range[1])
+    for order in (1, 2):
+        if args_dict.get(f"exclude_{order}b"):
+            params[f"exclude_{order}b"] = [list(r) if isinstance(r, (list, tuple)) else r.split() for r in args_dict[f"exclude_{order}b"]]
+    if args_dict.get("hierarc"):
+        params["hierarc"] = True
     if args_dict.get("exclude_3b"):
         params["exclude_3b"] = args_dict["exclude_3b"]
     if args_dict.get("exclude_4b"):
@@ -155,7 +167,13 @@ def _build_params(args_dict: dict) -> dict:
     # guidance (see docs/concepts/cutoffs_and_lambdas.md) is a *shorter*
     # outer cutoff for 3-/4-body, expressed via "SPECIAL 3B/4B S_MAXIM"
     # blocks (io/fm_setup.py already round-trips these).
-    if args_dict.get("special_maxim_3b") is not None:
+    if args_dict.get("special_maxim_3b_pairs"):
+        from ..io.fm_setup import specific_3b_rows
+
+        rows = specific_3b_rows(list(args_dict["elements"]), args_dict["special_maxim_3b_pairs"],
+                                exclude=args_dict.get("exclude_3b"))
+        params["special_blocks"].append({"order": 3, "bound": "S_MAXIM", "mode": "SPECIFIC", "rows": rows})
+    elif args_dict.get("special_maxim_3b") is not None:
         params["special_blocks"].append(
             {"order": 3, "bound": "S_MAXIM", "mode": "ALL", "value": float(args_dict["special_maxim_3b"])}
         )
@@ -169,8 +187,25 @@ def _build_params(args_dict: dict) -> dict:
     return params
 
 
+def _standard_mass(el: str) -> float:
+    """Standard atomic mass (amu, 4 decimals); previously an omitted mass silently became 1.0."""
+    from ase.data import atomic_masses, atomic_numbers
+
+    return round(float(atomic_masses[atomic_numbers[el]]), 4)
+
+
+_CHOICE_KEYS = ("masses", "elements", "order", "pair_cutoffs", "morse_lambda", "special_maxim_3b", "special_maxim_3b_pairs",
+                "special_maxim_4b", "exclude_3b", "exclude_4b", "nlayers", "fitener", "fitstrs", "fcuttyp")
+
+
 def run(args) -> dict:
     args_dict = vars(args)
+    if args_dict.get("hyper_choice"):
+        choice = json.loads(Path(args_dict["hyper_choice"]).read_text())
+        for k in _CHOICE_KEYS:
+            if choice.get(k) is not None and args_dict.get(k) in (None, [], {}, "false", "CUBIC", 1, False):
+                val = choice[k]
+                args_dict[k] = ("true" if val else "false") if k in ("fitener",) and isinstance(val, bool) else val
     if not args_dict.get("elements") or not args_dict.get("order") or not args_dict.get("trjfile") or not args_dict.get("nframes"):
         raise ValueError("fm-setup-gen requires at least trjfile, nframes, elements, and order (via flags or --json-in)")
 
