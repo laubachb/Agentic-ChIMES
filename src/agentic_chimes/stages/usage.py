@@ -23,6 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from . import study as study_stage
+from ..io import atomic
 
 NAME = "usage"
 SUMMARY = "CPU-hours used by a study (Slurm via sacct + login-node ledger), by phase and job."
@@ -166,7 +167,7 @@ def run(args) -> dict:
                         "allocation_efficiency = used / allocated",
                         "jobs still running are counted up to now"]}
     path = out / "usage_report.json"
-    path.write_text(json.dumps(report, indent=1))
+    atomic.write_json(path, report, indent=1)
     with open(out / "usage_jobs.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["job_id", "name", "phase", "state", "partition", "nodes", "alloc_cpus",
                                           "wall_hours", "cpu_hours", "used_cpu_hours", "node_hours", "work_dir", "submitted"], extrasaction="ignore")

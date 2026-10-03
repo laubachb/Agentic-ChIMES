@@ -43,6 +43,8 @@ from pathlib import Path
 import numpy as np
 
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "dataset-select"
 SUMMARY = "FPS / random / stratified-holdout sampling over a frame pool."
@@ -336,7 +338,7 @@ def run(args) -> dict:
             selected_indices, holdout_indices = _stratified_split(frames, n_select, seed)
 
     out_dir = Path(getattr(args, "output_dir", None) or ".")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out_dir)
 
     selected_xyzf = out_dir / "selected.xyzf"
     holdout_xyzf = out_dir / "holdout.xyzf"
@@ -344,7 +346,7 @@ def run(args) -> dict:
     xyzf_io.write_xyzf([frames[i] for i in holdout_indices], holdout_xyzf)
 
     indices_path = out_dir / "indices.json"
-    indices_path.write_text(json.dumps({"selected_indices": selected_indices, "holdout_indices": holdout_indices}, indent=2))
+    atomic.write_json(indices_path, {"selected_indices": selected_indices, "holdout_indices": holdout_indices}, indent=2)
 
     extra = {}
     if method == "stratified_holdout":

@@ -16,6 +16,8 @@ from pathlib import Path
 
 from . import study as study_stage
 from .lammps_run import _render_input
+from ..io import atomic
+from ..io import fs
 
 NAME = "deploy"
 SUMMARY = "Package the final model (params, LAMMPS example, provenance, MODEL_CARD.md) into the study's 06_deploy/."
@@ -166,7 +168,7 @@ def run(args) -> dict:
     if not facts.get("params") or not Path(facts["params"]).is_file():
         raise ValueError("no final params.txt registered (study --register params=...)")
     out = Path(getattr(args, "output", None) or root / "06_deploy")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     shutil.copy(facts["params"], out / "params.txt")
     if facts.get("fm_setup") and Path(facts["fm_setup"]).is_file():
         shutil.copy(facts["fm_setup"], out / "fm_setup.in")
@@ -174,7 +176,7 @@ def run(args) -> dict:
                                                          nsteps=10000, timestep=1.0))
     name = getattr(args, "model_name", None) or study_stage.load(root).get("name") or root.name
     (out / "MODEL_CARD.md").write_text(model_card(name, facts))
-    (out / "model_facts.json").write_text(json.dumps(facts, indent=1, default=str))
+    atomic.write_json((out / "model_facts.json"), facts, indent=1, default=str)
     study_stage.run(type("A", (), {"init": None, "study": str(root), "name": None, "goal": None, "elements": None,
                                    "register": [f"deploy={out}"], "extra_roots": None})())
     return {"deploy_dir": str(out), "files": sorted(p.name for p in out.iterdir()), "gaps": facts["gaps"]}

@@ -38,6 +38,7 @@ import numpy as np
 
 from ..converters import units
 from ..io import xyzf as xyzf_io
+from ..io import fs
 
 NAME = "hierarch"
 SUMMARY = "Hierarchical fitting: subtract fixed element models from mixture data (--subtract), merge cross + element params (--combine)."
@@ -58,15 +59,9 @@ def add_arguments(parser) -> None:
 
 
 def _elements_of(params_path) -> list:
-    lines = Path(params_path).read_text().splitlines()
-    i = next(k for k, ln in enumerate(lines) if "TYPEIDX" in ln)
-    out = []
-    for ln in lines[i + 1:]:
-        t = ln.split()
-        if len(t) < 2 or not t[0].isdigit():
-            break
-        out.append(t[1])
-    return out
+    from ..io.params import model_types
+
+    return [el for el, _ in model_types(params_path)]
 
 
 def zero_penalty_copy(params_path, out_path) -> Path:
@@ -145,7 +140,7 @@ def combine(cross_params, element_params: list, work: Path) -> Path:
         sys.path.insert(0, src)
     import hierarch as al_hierarch  # type: ignore
 
-    work.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work)
     # Mirrors al_hierarch.main (template = cross terms, each element file merged in turn), with one guard:
     # update_from() marks the special 4-body cutoff block "specific" even when neither model has 4-body
     # terms, and print_file() then fails on its empty count. Such a block is switched off instead.
@@ -173,7 +168,7 @@ def run(args) -> dict:
     if not element_params:
         raise ValueError("hierarch needs --element-params (one per fixed element model)")
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     if getattr(args, "subtract", None):
         frames = xyzf_io.read_xyzf(args.subtract)
         residual, summary = subtract(frames, element_params, out)

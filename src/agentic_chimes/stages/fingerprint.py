@@ -28,6 +28,8 @@ import numpy as np
 
 from ..io import fingerprint as fp
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "fingerprint"
 SUPPORTS_DRY_RUN = True
@@ -118,13 +120,14 @@ def _submit(args, out: Path) -> dict:
     profile = machines.load_profile(args.machine)
     payload["workers"] = cores = profile.default_ntasks_per_node or 112
     inp = out / "fingerprint_input.json"
-    inp.write_text(json.dumps(payload, indent=1, default=str))
+    atomic.write_json(inp, payload, indent=1, default=str)
     run_dir = out / "run"
     cmd = (f"{sys.executable} -m agentic_chimes.cli fingerprint --json-in {inp} --output-dir {run_dir} --force "
            "> fingerprint.out 2>&1")
     handle = hpc.submit_job(profile, job_name="fingerprint", commands=[f"cd {out.resolve()}", cmd], work_dir=out, nodes=1,
                             ntasks_per_node=cores, walltime_hours=getattr(args, "walltime_hours", 1.0) or 1.0,
-                            queue=getattr(args, "queue", "debug") or "debug", dry_run=bool(getattr(args, "dry_run", False)))
+                            queue=getattr(args, "queue", "debug") or "debug", dry_run=bool(getattr(args, "dry_run", False)),
+                            expect=[run_dir / "fingerprint.json"])
     return {"submitted": not handle.dry_run, "dry_run": handle.dry_run, "job_id": handle.job_id,
             "job_file": str(handle.job_file), "results_when_done": str(run_dir / "fingerprint.json")}
 
@@ -134,7 +137,7 @@ def run(args) -> dict:
         raise ValueError("fingerprint needs --params and --reference-xyzf")
     if getattr(args, "machine", None):
         out = Path(getattr(args, "output_dir", None) or ".").resolve()
-        out.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(out)
         return _submit(args, out)
     params = str(Path(args.params).resolve())
     orders = getattr(args, "orders", None) or model_orders(params)
@@ -143,7 +146,7 @@ def run(args) -> dict:
     alpha = getattr(args, "alpha", 0.1) or 0.1
     workers = max(1, getattr(args, "workers", 1) or 1)
     out = Path(getattr(args, "output_dir", None) or ".")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
 
     ref_frames, ref_idx = _subsample(xyzf_io.read_xyzf(args.reference_xyzf), cap)
     fref, cref = _fingerprints(ref_frames, params, orders, max_clusters, workers)
@@ -182,5 +185,5 @@ def run(args) -> dict:
             notes.append("covariance rank < 3: too few or too similar reference frames for a meaningful test")
     np.savez(out / "fingerprints.npz", **arrays)
     result.update({"fingerprints": str(out / "fingerprints.npz"), "notes": notes})
-    (out / "fingerprint.json").write_text(json.dumps(result, indent=1, default=str))
+    atomic.write_json((out / "fingerprint.json"), result, indent=1, default=str)
     return result

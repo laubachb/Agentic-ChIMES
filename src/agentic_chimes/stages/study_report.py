@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import study as study_stage
 from .deploy import _fmt, model_facts
+from ..io import atomic
 
 NAME = "study-report"
 SUMMARY = "Collate a study's artifacts (data -> fit -> MD -> benchmark -> deploy, CPU-hours) into REPORT_FACTS.json + REPORT.md."
@@ -233,7 +234,7 @@ def run(args) -> dict:
         raise ValueError("study-report needs a study (study.json)")
     facts = collect(root)
     _curation_counts(facts, root)
-    (root / "REPORT_FACTS.json").write_text(json.dumps(facts, indent=1, default=str))
+    atomic.write_json((root / "REPORT_FACTS.json"), facts, indent=1, default=str)
     report = root / "REPORT.md"
     text = render(facts)
     (root / "REPORT.md").write_text(text)

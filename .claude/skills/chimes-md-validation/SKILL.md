@@ -32,7 +32,6 @@ and the published model was chosen by MD against DFT (Lindsey 2019; see
 ```bash
 chimes-agent md-check --params A/params.txt --params B/params.txt \
   --prototype '{"name":"CuZr","crystalstructure":"cesiumchloride","a":3.26}' \
-  --elements Cu,Zr --masses '{"Cu":63.546,"Zr":91.224}' \
   --temperatures 300,1200,1600 --nsteps 5000 \
   --machine dane --queue debug --walltime-hours 0.5 --output-dir 04_md/check --dry-run
 ```

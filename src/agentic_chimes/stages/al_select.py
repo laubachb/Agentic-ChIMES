@@ -41,6 +41,7 @@ from pathlib import Path
 
 from .. import config
 from ..io import xyzf as xyzf_io
+from ..io import fs
 
 NAME = "al-select"
 SUMMARY = "Diversity (energy-histogram) active-learning batch selection via al_driver's gen_subset."
@@ -124,7 +125,7 @@ def run(args) -> dict:
     energies = _predicted_energies_normed(frames, params_path)
 
     out_root = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out_root.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out_root)
 
     energies_path = out_root / "candidate.energies_normed"
     energies_path.write_text("\n".join(str(e) for e in energies) + "\n")

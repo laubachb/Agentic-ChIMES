@@ -29,6 +29,8 @@ from pathlib import Path
 
 from ..io import xyzf as xyzf_io
 from . import data_curate
+from ..io import atomic
+from ..io import fs
 
 NAME = "al-merge"
 SUMMARY = "Merge labeled active-learning frames into the training set (theory check, fixed holdout, cycle bookkeeping)."
@@ -87,17 +89,17 @@ def run(args) -> dict:
         raise ValueError("; ".join(problems))
 
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     train = out / "train.xyzf"
     merged = base + new_frames
     xyzf_io.write_xyzf(merged, train)
     cycles = cycles + [int(args.cycle)] * len(new_frames)
-    (out / "frame_cycles.json").write_text(json.dumps(cycles))
+    atomic.write_json((out / "frame_cycles.json"), cycles)
     new_manifest = {**manifest, "train_xyzf": str(train), "n_train": len(merged), "frame_cycles": str(out / "frame_cycles.json"),
                     "sources": provs + new_provs,
                     "al_rounds": (manifest.get("al_rounds") or []) + [{"cycle": int(args.cycle), "n_added": len(new_frames),
                                                                       "from": [str(Path(p).resolve()) for p in args.new_xyzf]}]}
-    (out / "data_manifest.json").write_text(json.dumps(new_manifest, indent=1))
+    atomic.write_json((out / "data_manifest.json"), new_manifest, indent=1)
     return {"data_manifest": str(out / "data_manifest.json"), "train_xyzf": str(train), "n_train": len(merged),
             "n_added": len(new_frames), "holdout_xyzf": manifest.get("holdout_xyzf"),
             "frame_cycles": str(out / "frame_cycles.json"), "cycle": int(args.cycle)}

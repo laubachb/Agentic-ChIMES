@@ -21,9 +21,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import socket
 import time
 from pathlib import Path
 from typing import Optional
+
+from ..io import atomic
+from ..io import fs
 
 
 def _file_strings(value):
@@ -65,21 +70,43 @@ def _manifest_path(output_dir: Path, stage: str) -> Path:
 
 
 def load(output_dir: Path, stage: str) -> Optional[dict]:
-    p = _manifest_path(output_dir, stage)
-    if p.is_file():
-        with open(p) as f:
-            return json.load(f)
-    return None
+    """The stage's manifest, or None. An unreadable (e.g. truncated) manifest
+    is treated as absent: it describes no completed run worth protecting."""
+    from ..io import atomic
+
+    return atomic.read_json(_manifest_path(output_dir, stage))
 
 
 class InputMismatch(RuntimeError):
     pass
 
 
+STALE_AFTER_S = 6 * 3600  # a "running" manifest from another host older than this is assumed dead
+
+
+def _still_running(prior: dict) -> str:
+    """Why a manifest marked "running" still looks live ("" if not)."""
+    host, pid, started = prior.get("host"), prior.get("pid"), prior.get("started_at") or 0
+    if not host or not pid:
+        return ""  # written before host/pid were recorded
+    if host == socket.gethostname():
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            return ""
+        except PermissionError:
+            pass
+        return f"still running here (pid {pid})"
+    age = time.time() - started
+    if age < STALE_AFTER_S:
+        return f"marked running on {host} (pid {pid}, started {age / 60:.0f} min ago; cannot check another host)"
+    return ""
+
+
 def begin(output_dir: Path, stage: str, input_dict: dict, *, force: bool = False):
     """Returns ("short_circuit", prior_manifest) or ("run", None)."""
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(output_dir)
     files = input_files(input_dict)
     input_hash = _hash_inputs(input_dict, files)
     prior = load(output_dir, stage)
@@ -89,6 +116,12 @@ def begin(output_dir: Path, stage: str, input_dict: dict, *, force: bool = False
         legacy = hashlib.sha256(json.dumps(input_dict, sort_keys=True, default=str).encode()).hexdigest()
         if prior.get("input_hash") == legacy:
             prior = {**prior, "input_hash": input_hash}
+    if prior is not None and not force and prior.get("status") == "running":
+        busy = _still_running(prior)
+        if busy:
+            raise InputMismatch(f"{_manifest_path(output_dir, stage)}: another {stage} run is {busy}. Two runs in one "
+                                "--output-dir overwrite each other; wait for it, use another --output-dir, or pass "
+                                "--force if that run has died.")
     if prior is not None and not force:
         if prior.get("input_hash") == input_hash and prior.get("status") == "done":
             return "short_circuit", prior
@@ -107,8 +140,10 @@ def begin(output_dir: Path, stage: str, input_dict: dict, *, force: bool = False
         "input_files": files,
         "status": "running",
         "started_at": time.time(),
+        "host": socket.gethostname(),
+        "pid": os.getpid(),
     }
-    _manifest_path(output_dir, stage).write_text(json.dumps(manifest, indent=2))
+    atomic.write_json(_manifest_path(output_dir, stage), manifest, indent=2)
     return "run", None
 
 
@@ -130,5 +165,5 @@ def finish(output_dir: Path, stage: str, input_dict: dict, outputs: dict, *, sta
         "finished_at": time.time(),
         "outputs": outputs,
     }
-    _manifest_path(output_dir, stage).write_text(json.dumps(manifest, indent=2, default=str))
+    atomic.write_json(_manifest_path(output_dir, stage), manifest, indent=2)
     return manifest

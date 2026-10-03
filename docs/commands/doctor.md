@@ -22,6 +22,7 @@ chimes-agent doctor --quick         # skip the numerical checks
 | `HF_TOKEN` | unset (warning: open-data downloads may hit HTTP 429) |
 | literature index | `chimes_papers/` present but `tools/index_papers.sh` not run (warning) |
 | numerics | chimes_calculator or LAMMPS does not reproduce the published CHON reference energy/forces (the same reference the tests use) |
+| file-count quota | Lustre file count on the profile's scratch root is ≥ 85 % of the soft quota (warning) or ≥ 98 % (fail); on LLNL lustre2 the file count, not space, is the limit |
 | machine profile | profile does not load; empty account (`CHIMES_ACCOUNT`); `scratch_root` missing, not writable or node-local; no `sbatch`; a partition that `sinfo` does not know |
 
 ## Output

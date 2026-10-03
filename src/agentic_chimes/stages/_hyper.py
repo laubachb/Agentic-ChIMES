@@ -26,6 +26,7 @@ from itertools import combinations_with_replacement
 from pathlib import Path
 
 import numpy as np
+from ..io import fs
 
 BIN = 0.02
 SMOOTH_SIGMA = 0.08
@@ -352,12 +353,14 @@ def run_point(task: dict) -> dict:
     cfg, point_dir = task["cfg"], Path(task["point_dir"])
     context = fit_context(task)
     cached = point_dir / "result.json"
-    if cached.is_file():
-        prior = json.loads(cached.read_text())
+    from ..io import atomic
+
+    prior = atomic.read_json(cached)  # None when missing or truncated by a killed job: refit
+    if prior is not None:
         # failures are retried (they may have been our bug); fits from other data or solvers are redone
         if prior.get("status") in ("done", "timeout") and prior.get("context") == context:
             return prior
-    point_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(point_dir)
     result = {"key": config_key(cfg), "cfg": cfg, "point_dir": str(point_dir), "context": context}
     try:
         fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
@@ -402,7 +405,7 @@ def run_point(task: dict) -> dict:
         result.update({"status": "timeout", "error": str(exc)[-600:]})
     except Exception as exc:  # noqa: BLE001 - one bad point must not end the search
         result.update({"status": "failed", "error": str(exc)[-600:]})
-    cached.write_text(json.dumps(result, indent=1))
+    atomic.write_json(cached, result)
     return result
 
 

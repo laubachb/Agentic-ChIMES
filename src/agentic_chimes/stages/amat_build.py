@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 from .. import config, hpc, machines
+from ..io import fs
 
 NAME = "amat-build"
 SUMMARY = "Build A.txt/b.txt/dim.txt from fm_setup.in via the chimes_lsq binary."
@@ -86,7 +87,7 @@ def run(args) -> dict:
     )
 
     work_dir = Path(getattr(args, "output_dir", None) or fm_setup_in.parent)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work_dir)
     log_path = work_dir / "fm_setup.log"
 
     machine = getattr(args, "machine", None)

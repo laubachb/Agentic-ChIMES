@@ -15,6 +15,10 @@ You will be given some of: a Slurm job id, a working/output directory, an
 
 Check, as applicable:
 
+0. **First, for any directory a `chimes-agent` stage submitted from:**
+   `chimes-agent job-status --work-dir <dir>` (read-only). It gives the
+   verdict, reason, fix and log tail in one call, using the job's `job.json`.
+   Report its `verdict`; use the steps below only for what it does not cover.
 1. **Slurm:** `squeue -j <id> -h -o "%T %M %L %R"`; if not in the queue,
    `sacct -j <id> --format=JobID,State,Elapsed,ExitCode -X -n`.
 2. **Output present?** A job that is `COMPLETED 0:0` but whose directory

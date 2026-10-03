@@ -33,6 +33,8 @@ from pathlib import Path
 
 from ..data_sources import colabfit, convert
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "data-fetch"
 SUMMARY = "Fetch configurations for a chemical system from ColabFit or local DFT files into one .xyzf + provenance."
@@ -253,7 +255,7 @@ def run(args) -> dict:
         raise ValueError(f"nothing left to write after filtering (dropped: {dropped})")
 
     out = Path(getattr(args, "output_dir", None) or ".")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     pool = out / "pool.xyzf"
     xyzf_io.write_xyzf(frames, pool)
     label_policy = getattr(args, "label_policy", "source")
@@ -274,7 +276,7 @@ def run(args) -> dict:
         "fetched_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     prov_path = out / "provenance.json"
-    prov_path.write_text(json.dumps(provenance, indent=1))
+    atomic.write_json(prov_path, provenance, indent=1)
 
     return {
         "pool_xyzf": str(pool),

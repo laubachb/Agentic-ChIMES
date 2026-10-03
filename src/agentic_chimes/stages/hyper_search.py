@@ -45,6 +45,8 @@ from pathlib import Path
 
 from ..io import xyzf as xyzf_io
 from . import _hyper, hyper_analyze
+from ..io import atomic
+from ..io import fs
 
 NAME = "hyper-search"
 SUMMARY = "Staged search over cutoffs, Morse lambdas and 2b/3b/4b orders; picks the cheapest near-best model on holdout error."
@@ -205,12 +207,13 @@ def _submit(args, out: Path) -> dict:
     cores = getattr(args, "cores", None) or min(profile.default_ntasks_per_node or 112, _max_stage_points(args))
     payload["workers"] = cores
     inp = out / "hyper_search_input.json"
-    inp.write_text(json.dumps(payload, indent=1, default=str))
+    atomic.write_json(inp, payload, indent=1, default=str)
     run_dir = out / "search"
     cmd = f"{sys.executable} -m agentic_chimes.cli hyper-search --json-in {inp} --output-dir {run_dir} --force > hyper_search.out 2>&1"
     handle = hpc.submit_job(profile, job_name="hyper-search", commands=[f"cd {out.resolve()}", cmd], work_dir=out,
                             nodes=1, ntasks_per_node=cores, walltime_hours=getattr(args, "walltime_hours", 4.0) or 4.0,
-                            queue=getattr(args, "queue", "batch") or "batch", dry_run=bool(getattr(args, "dry_run", False)))
+                            queue=getattr(args, "queue", "batch") or "batch", dry_run=bool(getattr(args, "dry_run", False)),
+                            expect=[run_dir / "hyper_report.json"])
     return {"submitted": not handle.dry_run, "dry_run": handle.dry_run, "job_id": handle.job_id,
             "job_file": str(handle.job_file), "input": str(inp),
             "results_when_done": str(run_dir / "hyper_report.json"), "cores_requested": cores,
@@ -278,7 +281,7 @@ def _edge_notes(stage, chosen, grid_key, values):
 
 def run(args) -> dict:
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     if getattr(args, "machine", None):
         return _submit(args, out)
 
@@ -652,7 +655,7 @@ def run(args) -> dict:
         "algorithm": c.get("solver", runner.base["algorithm"]), "alpha": final.get("solver_alpha", runner.base["alpha"]),
         "weights": c.get("weights_preset", "uniform"),
     }
-    (best_dir / "hyper_choice.json").write_text(json.dumps(choice, indent=1))
+    atomic.write_json((best_dir / "hyper_choice.json"), choice, indent=1)
 
     gap = final["holdout_relative_force_error"] - final["train_relative_force_error"]
     if final["train_relative_force_error"] and gap > 0.5 * final["train_relative_force_error"]:
@@ -684,7 +687,7 @@ def run(args) -> dict:
         "n_fits": len(runner.all),
     }
     path = out / "hyper_report.json"
-    path.write_text(json.dumps(report, indent=1, default=str))
+    atomic.write_json(path, report, indent=1, default=str)
     return {"hyper_report": str(path), "params": str(best_dir / "params.txt"), "fm_setup_in": str(best_dir / "fm_setup.in"),
             "hyper_choice": str(best_dir / "hyper_choice.json"), "final": report["final"], "hyperparameters": choice,
             "stage_summary": [{k: s[k] for k in ("stage", "n_points", "skipped", "reason", "kept_three_body", "kept_four_body", "four_body_gain_by_solver") if k in s} for s in report_stages],

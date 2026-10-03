@@ -16,6 +16,8 @@ from pathlib import Path
 
 from ..io import xyzf as xyzf_io
 from . import _hyper
+from ..io import atomic
+from ..io import fs
 
 NAME = "hyper-analyze"
 SUMMARY = "Per-pair distance/RDF analysis -> inner cutoffs, Morse lambdas, outer-cutoff candidates, N_LAYERS, data size."
@@ -61,7 +63,7 @@ def run(args) -> dict:
         analysis["level_of_theory"] = manifest["level_of_theory"]
 
     out = Path(getattr(args, "output_dir", None) or ".")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     path = out / "hyper_analysis.json"
-    path.write_text(json.dumps(analysis, indent=1))
+    atomic.write_json(path, analysis, indent=1)
     return {"hyper_analysis": str(path), **analysis}

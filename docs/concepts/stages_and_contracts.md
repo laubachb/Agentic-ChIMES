@@ -102,6 +102,26 @@ Re-invoking a stage against the same `--output-dir`:
 - **`--force`** → always re-runs regardless of prior state.
 - **`--dry-run`** → records nothing, so the real run that follows with the
   same inputs executes instead of short-circuiting to the preview's result.
+- **inputs include file contents**: each input file's size and mtime is
+  part of the hash, so regenerating a file in place is noticed (and named).
+- **a failed run** never blocks a retry, even with changed inputs.
+- **a run still in progress** blocks a second one in the same directory.
+  On the same host the recorded PID is checked. A run on another host
+  counts as live for 6 hours. `--force` overrides either.
+- **a truncated manifest** (a job killed mid-write) counts as absent.
+
+## Crash safety
+
+- Every JSON result and cache is written to a temporary file and renamed
+  into place (`io/atomic.py`), so a killed job never leaves half a file.
+  Readers treat an unreadable file as missing: a hyper-search point whose
+  cache was cut short is refitted, not fatal.
+- Directories are created one level at a time, with retries on Lustre's
+  transient `EREMOTE` (`io/fs.py`).
+- Anything that fails before a stage starts (creating the output
+  directory, reading `--json-in`) still returns the one-JSON-object error.
+- Submissions record `job.json`; `job-status` turns scheduler state plus the
+  expected result files into one verdict.
 
 ## Machine-callable discovery
 

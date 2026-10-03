@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from ._shell import run_hosttype_script
+from ..io import fs
 
 REPOS = {
     "al_driver-LLfork": {
@@ -52,7 +53,7 @@ def ensure_repo(name: str, *, codes_dir: Path, force: bool = False, ref: Optiona
     if repo_dir.is_dir() and not force:
         return {"path": str(repo_dir), "ref": target_ref, "status": "already_present"}
 
-    codes_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(codes_dir)
 
     # Plain `git clone` (not --depth 1): the pinned ref is an arbitrary
     # historical commit that a shallow clone may not contain.

@@ -33,18 +33,19 @@ from typing import Optional
 
 from .. import config
 from ..io import lammps_data, xyzf as xyzf_io
+from ..io import fs
 
 NAME = "lammps-run"
 SUMMARY = "Single-point/MD via lmp_mpi_chimes (local execution)."
 SCHEMA = {
     "type": "object",
-    "required": ["params", "structure_xyzf", "elements", "masses"],
+    "required": ["params", "structure_xyzf"],
     "properties": {
         "params": {"type": "string"},
         "structure_xyzf": {"type": "string", "description": "A .xyzf file; frame_index selects which frame (default 0)."},
         "frame_index": {"type": "integer", "default": 0},
-        "elements": {"type": "array", "items": {"type": "string"}, "description": "LAMMPS atom-type order; must match the params.txt's own element order."},
-        "masses": {"type": "object", "additionalProperties": {"type": "number"}},
+        "elements": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Optional: checked against params.txt (types and order come from the model)."},
+        "masses": {"type": ["object", "null"], "additionalProperties": {"type": "number"}, "description": "Optional: checked against params.txt; LAMMPS matches types by mass, so a mismatch is refused."},
         "mode": {"type": "string", "enum": ["single_point", "md"], "default": "single_point"},
         "temperature": {"type": "number", "default": 300.0},
         "nsteps": {"type": "integer", "default": 1000},
@@ -161,7 +162,7 @@ def replicate_for_cutoff(frame, params_path):
 
 
 def run(args) -> dict:
-    for req in ("params", "structure_xyzf", "elements", "masses"):
+    for req in ("params", "structure_xyzf"):
         if not getattr(args, req, None):
             raise ValueError(f"lammps-run requires --{req.replace('_', '-')} (or {req!r} in --json-in)")
 
@@ -178,10 +179,14 @@ def run(args) -> dict:
     lammps_bin = Path(args.lammps_bin) if getattr(args, "lammps_bin", None) else config.resolve_component("lammps_bin")
 
     work_dir = Path(getattr(args, "output_dir", None) or ".")
-    work_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work_dir)
 
     data_path = work_dir / "structure.data"
-    lammps_data.write_lammps_data(frame, args.elements, args.masses, data_path)
+    from ..io import params as params_io
+
+    elements, masses = params_io.resolve_types(params_path, getattr(args, "elements", None), getattr(args, "masses", None))
+    params_io.frame_elements_check(params_path, frame.symbols)
+    lammps_data.write_lammps_data(frame, elements, masses, data_path)
 
     mode = getattr(args, "mode", "single_point") or "single_point"
     in_text = _render_input(

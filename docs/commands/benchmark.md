@@ -7,7 +7,7 @@ LAMMPS, and the cost model for sizing production runs.
 # preview, then submit (one Slurm job runs every case, smallest first)
 chimes-agent benchmark --params study/02_fit/search/best/params.txt \
   --prototype '{"name":"CuZr","crystalstructure":"cesiumchloride","a":3.26}' \
-  --elements Cu,Zr --masses '{"Cu":63.546,"Zr":91.224}' --strong-atoms 8000 \
+  --strong-atoms 8000 \
   --machine dane --queue debug --walltime-hours 1 --dry-run --output-dir study/05_bench
 # ... after the job finishes
 chimes-agent benchmark --collect study/05_bench

@@ -24,6 +24,7 @@ import tempfile
 from pathlib import Path
 
 from .stages import _manifest
+from .io import fs
 
 STAGE_MODULE_NAMES = [
     "setup_cmd",
@@ -54,6 +55,7 @@ STAGE_MODULE_NAMES = [
     "deploy",
     "study_report",
     "submit",
+    "job_status",
     "al_select",
     "al_merge",
     "al_run",
@@ -208,7 +210,7 @@ def _record_local_usage(args, stage_name: str, t0: float, cpu0: float) -> None:
 def _stage_log_path(args, stage_name: str) -> Path:
     if args._uses_output_dir and args.output_dir:
         out = Path(args.output_dir)
-        out.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(out)
         return out / f"{stage_name}.log"
     fd, path = tempfile.mkstemp(prefix=f"chimes-agent-{stage_name}-", suffix=".log")
     os.close(fd)
@@ -254,6 +256,9 @@ def main(argv=None) -> int:
             decision, prior = _manifest.begin(args.output_dir, mod.NAME, input_echo, force=args.force)
         except _manifest.InputMismatch as exc:
             _emit({"error": str(exc)}, args)
+            return 1
+        except Exception as exc:  # noqa: BLE001 - e.g. a filesystem error creating the output dir: still one JSON object
+            _emit({"error": f"could not prepare {args.output_dir}: {type(exc).__name__}: {exc}"}, args)
             return 1
         if decision == "short_circuit":
             _emit(prior["outputs"], args)

@@ -121,6 +121,34 @@ def _numerics() -> list:
     return checks
 
 
+def lustre_file_quota(path) -> dict | None:
+    """{files, soft, hard, fraction} from `lfs quota` for the filesystem holding
+    `path`, or None when it is not Lustre / lfs is unavailable. On LLNL lustre2
+    the file COUNT, not space, is the limit users hit."""
+    import getpass
+
+    if not shutil.which("lfs"):
+        return None
+    try:
+        p = subprocess.run(["lfs", "quota", "-u", getpass.getuser(), str(path)], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = p.stdout.splitlines()
+    try:
+        k = next(i for i, ln in enumerate(lines) if ln.strip().startswith("Filesystem"))
+    except StopIteration:
+        return None
+    toks = " ".join(lines[k + 1:]).split()
+    if toks and not toks[0].rstrip("*").isdigit():
+        toks = toks[1:]  # the path column
+    try:
+        files, soft, hard = (int(t.rstrip("*")) for t in toks[4:7])
+    except (ValueError, IndexError):
+        return None
+    limit = soft or hard
+    return {"files": files, "soft": soft, "hard": hard, "fraction": files / limit if limit else None}
+
+
 def _machine(name) -> list:
     from .. import machines
     from ..hpc import slurm
@@ -144,6 +172,14 @@ def _machine(name) -> list:
             checks.append(_check("scratch_root", "ok" if writable else "fail",
                                  f"{p} ({'writable' if writable else 'missing or not writable'})",
                                  f"create it or fix filesystem.scratch_root ({p})"))
+            q = lustre_file_quota(p) if writable else None
+            if q and q["fraction"] is not None:
+                frac = q["fraction"]
+                status = "fail" if frac >= 0.98 else "warn" if frac >= 0.85 else "ok"
+                checks.append(_check("file-count quota", status,
+                                     f"{q['files']:,} of {q['soft']:,} files ({frac:.0%}) on {p}",
+                                     "archive many-file directories as tars on bulk storage (e.g. /p/lustre3) and "
+                                     "remove caches; stages write packed files, but studies and envs add up"))
         except ValueError as exc:
             checks.append(_check("scratch_root", "fail", str(exc), "point scratch_root at a shared filesystem"))
     submit = "qsub" if prof.job_system == "torque" else "sbatch"

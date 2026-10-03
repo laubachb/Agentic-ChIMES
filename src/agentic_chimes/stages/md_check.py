@@ -44,20 +44,22 @@ import numpy as np
 
 from ..io import lammps_data
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "md-check"
 SUMMARY = "Short NVT MD of candidate models: stability, close contacts, RDFs vs a reference, frames harvested for AL."
 SUPPORTS_DRY_RUN = True
 SCHEMA = {
     "type": "object",
-    "required": ["params", "elements", "masses"],
+    "required": ["params"],
     "properties": {
         "params": {"type": "array", "items": {"type": "string"}, "description": "Candidate params.txt files (same elements/masses)."},
         "structure_xyzf": {"type": ["string", "null"], "description": "Starting structure(s); frame_index picks one."},
         "frame_index": {"type": "integer", "default": 0},
         "prototype": {"type": ["object", "null"], "description": "ase.build.bulk kwargs instead of a file (see benchmark)."},
-        "elements": {"type": "array", "items": {"type": "string"}},
-        "masses": {"type": "object"},
+        "elements": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Optional: checked against each params.txt."},
+        "masses": {"type": ["object", "null"], "description": "Optional: checked against each params.txt (LAMMPS matches types by mass)."},
         "temperatures": {"type": "array", "items": {"type": "number"}, "default": [300.0]},
         "nsteps": {"type": "integer", "default": 2000},
         "timestep": {"type": "number", "default": 1.0, "description": "fs"},
@@ -270,7 +272,7 @@ def run_case(case: dict) -> dict:
     out = Path(case["dir"])
     res = {"params": case["params"], "temperature": case["temperature"], "dir": str(out)}
     try:
-        out.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(out)
         xyzf_io.write_xyzf([case["frame"]], out / "start.xyzf")
         text = lammps_run._render_input("md", "structure.data", str(Path(case["params"]).resolve()),
                                         temperature=case["temperature"], nsteps=case["nsteps"],
@@ -385,12 +387,13 @@ def _submit(args, out: Path) -> dict:
     cores = min(profile.default_ntasks_per_node or 112, max(1, n_cases))
     payload["workers"] = cores
     inp = out / "md_check_input.json"
-    inp.write_text(json.dumps(payload, indent=1, default=str))
+    atomic.write_json(inp, payload, indent=1, default=str)
     run_dir = out / "run"
     cmd = f"{sys.executable} -m agentic_chimes.cli md-check --json-in {inp} --output-dir {run_dir} --force > md_check.out 2>&1"
     handle = hpc.submit_job(profile, job_name="md-check", commands=[f"cd {out.resolve()}", cmd], work_dir=out, nodes=1,
                             ntasks_per_node=cores, walltime_hours=getattr(args, "walltime_hours", 1.0) or 1.0,
-                            queue=getattr(args, "queue", "debug") or "debug", dry_run=bool(getattr(args, "dry_run", False)))
+                            queue=getattr(args, "queue", "debug") or "debug", dry_run=bool(getattr(args, "dry_run", False)),
+                            expect=[run_dir / "md_check.json"])
     return {"submitted": not handle.dry_run, "dry_run": handle.dry_run, "job_id": handle.job_id, "job_file": str(handle.job_file),
             "n_runs": n_cases, "cores_requested": cores, "results_when_done": str(run_dir / "md_check.json")}
 
@@ -399,11 +402,18 @@ def run(args) -> dict:
     params = [str(Path(p).resolve()) for p in (getattr(args, "params", None) or [])]
     if not params:
         raise ValueError("md-check needs at least one --params")
-    if not getattr(args, "elements", None) or not getattr(args, "masses", None):
-        raise ValueError("md-check needs --elements and --masses (the order and masses the models were fitted with)")
+    from ..io import params as params_io
+
+    # types and masses come from the models; every candidate must agree with the first
+    resolved = [params_io.resolve_types(p, getattr(args, "elements", None), getattr(args, "masses", None)) for p in params]
+    els0, mass0 = resolved[0]
+    for p, (els, mass) in zip(params, resolved):
+        if els != els0 or any(abs(mass[e] - mass0[e]) > params_io.MASS_TOL for e in els):
+            raise ValueError(f"{p} has types/masses {mass} but {params[0]} has {mass0}: candidates must share atom types")
+    args.elements, args.masses = els0, mass0
     args.params = params
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     if getattr(args, "machine", None):
         return _submit(args, out)
 
@@ -490,6 +500,6 @@ def run(args) -> dict:
               "models": per_model, "runs": results, "harvest_xyzf": str(harvest_path) if harvest_path else None,
               "n_harvested": len(harvest), "n_harvested_close_contact": n_close, "n_harvested_other": n_other,
               "notes": notes}
-    (out / "md_check.json").write_text(json.dumps(report, indent=1, default=str))
+    atomic.write_json((out / "md_check.json"), report, indent=1, default=str)
     return {**{k: report[k] for k in ("models", "harvest_xyzf", "n_harvested", "notes")},
             "report": str(out / "md_check.json")}

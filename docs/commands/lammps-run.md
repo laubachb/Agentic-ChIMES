@@ -37,7 +37,6 @@ wrapper, and the standalone `chimescalc` binary all agree to ~1e-3.
 chimes-agent lammps-run \
   --params ./model/params.txt \
   --structure-xyzf ./structures.xyzf --frame-index 0 \
-  --elements C,H,O,N --masses '{"C":12.011,"H":1.0079,"O":15.9994,"N":14.007}' \
   --mode single_point \
   --output-dir ./lmp_run
 
@@ -46,16 +45,18 @@ chimes-agent lammps-run ... --mode md --temperature 300 --nsteps 5000 --timestep
   --output-dir ./lmp_md_run
 ```
 
-## Correctness-critical: `elements`/`masses` must match the params.txt
+## Atom types and masses come from params.txt
 
-LAMMPS atom-type IDs are assigned in the order of `--elements`, and
-`pair_coeff * * params.txt` maps those IDs to params.txt's *internal* type
-indices positionally, not by element symbol — `elements` here must be the
-same ordering `fm-setup-gen` used to build that params.txt. Masses must
-match the params.txt's declared masses to within ChIMES' ~0.001 amu
-tolerance. Neither is cross-checked automatically (no params.txt parser
-exists yet) — get this wrong and LAMMPS will silently evaluate the wrong
-pair/cluster types.
+LAMMPS' ChIMES pair style matches atom types to the model **by mass**
+(tolerance ~0.001 amu). A mass typed slightly differently is not recognized:
+Cu as 63.5 instead of the model's 63.546 gave −183.6 kcal/mol instead of
+−272.3 on a Cu-Zr cell, with no error. Swapped masses relabel atoms. So
+`lammps-run`, `md-check` and `benchmark` read element types and masses
+from `params.txt` (`io/params.py`):
+
+- `--elements` / `--masses` are optional and only cross-checked;
+- a mass off by more than 0.001 amu is refused, with the reason;
+- an element the model does not describe is refused.
 
 ## Flags
 

@@ -36,6 +36,7 @@ contract every page below assumes.
 | [`md-check`](md-check.md) | **implemented** (local or one Slurm job) | Short MD of candidate models: stability, close contacts, RDF vs reference, AL harvest |
 | [`qe-relabel`](qe-relabel.md) | **implemented** | Submit Quantum ESPRESSO single-point jobs; convert output to `.xyzf` |
 | [`submit`](submit.md) | **implemented** | Generic Slurm submit/status/cancel/dry-run |
+| [`job-status`](job-status.md) | **implemented** | Verdict on a submitted job: succeeded / failed (why, fix) / completed without results |
 | [`al-run`](al-run.md) | **implemented** | Launch al_driver's own active-learning loop as a detached background process |
 | [`al-select`](al-select.md) | **implemented** | Diversity-based active-learning batch selection via al_driver's own `gen_subset` |
 | [`al-merge`](al-merge.md) | **implemented** | Merge labeled AL frames into the training set (theory check, fixed holdout, cycles) |

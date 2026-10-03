@@ -102,6 +102,7 @@ nav:
           - setup: commands/setup.md
           - doctor: commands/doctor.md
           - submit: commands/submit.md
+          - job-status: commands/job-status.md
   - Concepts:
       - concepts/stages_and_contracts.md
       - concepts/claude_code_integration.md

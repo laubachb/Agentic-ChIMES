@@ -31,6 +31,8 @@ import numpy as np
 
 from ..data_sources import convert
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "data-generate"
 SUMMARY = "Generate strained/rattled/substituted supercells (unlabeled) for QE labeling."
@@ -146,7 +148,7 @@ def run(args) -> dict:
         raise ValueError(f"no structures generated (skipped: {skipped})")
 
     out = Path(getattr(args, "output_dir", None) or ".")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     path = out / "structures.xyzf"
     xyzf_io.write_xyzf(frames, path)
     elements = sorted({s for f in frames for s in f.symbols})
@@ -162,7 +164,7 @@ def run(args) -> dict:
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     prov_path = out / "provenance.json"
-    prov_path.write_text(json.dumps(prov, indent=1))
+    atomic.write_json(prov_path, prov, indent=1)
 
     natoms = [f.natoms for f in frames]
     warnings = []

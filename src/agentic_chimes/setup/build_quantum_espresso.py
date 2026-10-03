@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .. import config
 from ._shell import run_hosttype_script
+from ..io import fs
 
 QE_REPO_URL = "https://gitlab.com/QEF/q-e.git"
 DEFAULT_QE_VERSION = "qe-7.3.1"
@@ -34,7 +35,7 @@ def build(profile, *, deps_dir: Path = config.DEPS_DIR, qe_version: str = DEFAUL
     extra_configure_args = " ".join(profile.qe.get("configure_extra_args", []))
 
     if not qe_dir.is_dir():
-        deps_dir.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(deps_dir)
         run_hosttype_script(
             script=f"git clone --depth 1 --branch {qe_version} {QE_REPO_URL} {qe_dir.name}",
             cwd=deps_dir,
@@ -64,6 +65,6 @@ def build(profile, *, deps_dir: Path = config.DEPS_DIR, qe_version: str = DEFAUL
 
 
 def _log(path: Path, message: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(path.parent)
     with open(path, "a") as f:
         f.write(message + "\n")

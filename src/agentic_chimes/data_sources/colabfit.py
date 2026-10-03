@@ -29,6 +29,8 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from ..io import atomic
+from ..io import fs
 
 HF_AUTHOR = "colabfit"
 CATALOG_COLUMNS = (
@@ -47,7 +49,7 @@ def _cache_dir() -> Path:
     from .. import config
 
     d = config.CACHE_DIR / "colabfit"
-    d.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(d)
     return d
 
 
@@ -133,7 +135,7 @@ def load_catalog(refresh: bool = False, max_age_days: float = 30.0, workers: int
         for entry in pool.map(_fetch_catalog_entry, todo):
             good[entry["repo_id"]] = entry
     entries = [good[r] for r in repo_ids]
-    path.write_text(json.dumps({"fetched_at": time.time(), "datasets": entries}))
+    atomic.write_json(path, {"fetched_at": time.time(), "datasets": entries})
     return entries
 
 
@@ -156,8 +158,8 @@ def config_files(repo_id: str) -> list:
                        if f.startswith("co/") and f.endswith(".parquet"))
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"could not list files of {repo_id} ({exc}).{_rate_limit_hint(exc)}") from exc
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(files))
+    fs.ensure_dir(path.parent)
+    atomic.write_json(path, files)
     return files
 
 
@@ -184,7 +186,7 @@ def known_unreadable() -> dict:
 def _record_unreadable(repo_id: str, rel: str, err: str) -> None:
     data = known_unreadable()
     data.setdefault(repo_id, {})[rel] = err[:200]
-    _unreadable_path().write_text(json.dumps(data, indent=1))
+    atomic.write_json(_unreadable_path(), data, indent=1)
 
 
 def scan(repo_id: str, row_filter, files=None):

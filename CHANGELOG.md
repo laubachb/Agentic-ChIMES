@@ -1,6 +1,29 @@
 # Changelog
 
-## Unreleased — stresses, per-pair cutoffs, fingerprints, hierarchical fits, MD and AL agents
+## Unreleased — robustness: failure modes found by injection
+
+- **Masses from the model.** `lammps-run`, `md-check` and `benchmark` take
+  element types and masses from `params.txt` and refuse disagreeing inputs.
+  LAMMPS matches types by mass: Cu typed as 63.5 instead of 63.546 silently
+  gave -183.6 instead of -272.3 kcal/mol. `--elements`/`--masses` are now
+  optional cross-checks.
+- **Crash-safe files.** All JSON results, caches and manifests are written
+  atomically (`io/atomic.py`). A truncated manifest (killed job) is treated
+  as absent; it used to crash the CLI with a raw traceback. A truncated
+  hyper-search point cache is refitted.
+- **`job-status`** (new, read-only): every submission records `job.json`
+  (job id, expected result files). The stage returns SUCCEEDED, FAILED
+  (TIMEOUT / OUT_OF_MEMORY / ... with a fix), COMPLETED_WITHOUT_RESULTS, or
+  QUEUED/RUNNING. The job-monitor agent uses it first.
+- **No concurrent runs in one output dir:** a live run (PID checked on the
+  same host; 6 h on another host) blocks a second; `--force` overrides.
+- **Lustre EREMOTE:** directories are created one level at a time with
+  retries (`io/fs.py`), across all 38 former `mkdir -p` sites.
+- **`doctor`** checks the Lustre file-count quota on the scratch root
+  (warn at 85%, fail at 98%).
+- Any failure before a stage starts still returns one JSON error object.
+
+## Stresses, per-pair cutoffs, fingerprints, hierarchical fits, MD and AL agents
 
 - **Stresses end to end.** `data-fetch` keeps stresses from ASE files
   (Cauchy sign) and ColabFit. It verifies the ColabFit sign per dataset

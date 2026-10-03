@@ -36,6 +36,8 @@ from ..data_sources import convert
 from ..io import lammps_data
 from ..io import xyzf as xyzf_io
 from .lammps_run import _render_input
+from ..io import atomic
+from ..io import fs
 
 NAME = "benchmark"
 SUMMARY = "Strong/weak scaling of a ChIMES model in LAMMPS (Slurm submit, then --collect) -> cost model for compute requests."
@@ -49,8 +51,8 @@ SCHEMA = {
         "structure_xyzf": {"type": ["string", "null"], "description": "Orthorhombic frame to replicate (see frame_index)."},
         "frame_index": {"type": "integer", "default": 0},
         "prototype": {"type": ["object", "null"], "description": "ase.build.bulk kwargs instead of a file, e.g. {\"name\":\"CuZr\",\"crystalstructure\":\"cesiumchloride\",\"a\":3.26}."},
-        "elements": {"type": ["array", "null"], "items": {"type": "string"}},
-        "masses": {"type": ["object", "null"]},
+        "elements": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Optional: checked against params.txt."},
+        "masses": {"type": ["object", "null"], "description": "Optional: checked against params.txt (LAMMPS matches types by mass)."},
         "ranks": {"type": "array", "items": {"type": "integer"}, "default": DEFAULT_RANKS},
         "nodes": {"type": "array", "items": {"type": "integer"}, "default": [1], "description": "Extra multi-node points use nodes x cores-per-node ranks."},
         "modes": {"type": "array", "items": {"type": "string"}, "default": ["strong", "weak"]},
@@ -149,13 +151,17 @@ def _cases(args, cores_per_node: int):
 # ------------------------------------------------------------------ submit
 
 def _submit(args) -> dict:
-    for req in ("params", "elements", "masses", "machine"):
+    for req in ("params", "machine"):
         if not getattr(args, req, None):
             raise ValueError(f"benchmark requires --{req.replace('_', '-')}")
+    from ..io import params as params_io
+
+    args.elements, args.masses = params_io.resolve_types(args.params, getattr(args, "elements", None),
+                                                         getattr(args, "masses", None))
     profile = machines.load_profile(args.machine)
     cpn = profile.default_ntasks_per_node or 112
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
     base = _base_atoms(args)
     params = Path(args.params).resolve()
     lmp = config.resolve_component("lammps_bin", required=not getattr(args, "dry_run", False))
@@ -186,7 +192,8 @@ def _submit(args) -> dict:
                                                           "machine": args.machine}, indent=1, default=str))
     handle = hpc.submit_job(profile, job_name="chimes-bench", commands=commands, work_dir=out,
                             nodes=max(c["nodes"] for c in cases), ntasks_per_node=cpn,
-                            walltime_hours=args.walltime_hours, queue=args.queue, dry_run=bool(getattr(args, "dry_run", False)))
+                            walltime_hours=args.walltime_hours, queue=args.queue, dry_run=bool(getattr(args, "dry_run", False)),
+                            expect=[str(Path(c["dir"]) / "log.lammps") for c in cases])
     return {"work_dir": str(out), "n_cases": len(cases), "job_id": handle.job_id, "dry_run": handle.dry_run,
             "job_file": str(handle.job_file),
             "cases": [{k: c[k] for k in ("mode", "ranks", "nodes", "atoms")} for c in cases],
@@ -302,7 +309,7 @@ def _collect(args) -> dict:
     report = {"work_dir": str(d), "machine": meta.get("machine"), "settings": s, "results": results, "cost_model": model,
               "estimates_1ns": estimates, "failed": failed, "notes": notes,
               "unstable": [c["ranks"] for c in cases if c.get("status") == "unstable"]}
-    (d / "benchmark.json").write_text(json.dumps(report, indent=1, default=str))
+    atomic.write_json((d / "benchmark.json"), report, indent=1, default=str)
     return {"benchmark": str(d / "benchmark.json"), "cost_model": model,
             "strong": {k: results.get("strong", {}).get(k) for k in ("recommended_ranks", "recommended_efficiency")},
             "weak": {k: results.get("weak", {}).get(k) for k in ("recommended_ranks", "recommended_efficiency")},

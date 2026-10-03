@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 from ..io import fm_setup
+from ..io import fs
 
 NAME = "fm-setup-gen"
 SUMMARY = "Generate fm_setup.in from typed parameters (elements, cutoffs, order, fit flags)."
@@ -213,7 +214,7 @@ def run(args) -> dict:
     text = fm_setup.render(params)
 
     out_dir = Path(args_dict.get("output_dir") or ".")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out_dir)
     out_path = out_dir / "fm_setup.in"
     out_path.write_text(text)
 

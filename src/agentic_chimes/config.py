@@ -15,6 +15,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from .io import fs
 
 
 def _find_repo_root() -> Path:
@@ -92,7 +93,7 @@ def write_installed_component(component: str, *, path: str, machine: str, versio
         "machine": machine,
         "version": version,
     }
-    DEPS_DIR.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(DEPS_DIR)
     with open(INSTALLED_JSON, "w") as f:
         json.dump(data, f, indent=2, sort_keys=True)
         f.write("\n")

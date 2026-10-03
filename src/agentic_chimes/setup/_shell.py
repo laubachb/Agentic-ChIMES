@@ -14,6 +14,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from ..io import fs
 
 
 class BuildError(RuntimeError):
@@ -41,7 +42,7 @@ def run_hosttype_script(
     """Run a shell snippet (typically `export hosttype=<X>; ./install.sh ...`)
     from `cwd`, logging combined stdout/stderr to `log_path`. Raises
     BuildError on nonzero exit."""
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(log_path.parent)
     # hosttype "none" (the generic profile): leave it unset, so every fork's
     # install.sh builds with the compilers already on PATH (the one convention
     # all three installers share; an unknown or empty value errors in some).

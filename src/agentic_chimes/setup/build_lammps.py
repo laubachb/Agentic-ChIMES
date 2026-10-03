@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .. import config
 from ._shell import run_hosttype_script
+from ..io import fs
 
 
 def build(profile, *, deps_dir: Path = config.DEPS_DIR) -> dict:
@@ -40,7 +41,7 @@ def build(profile, *, deps_dir: Path = config.DEPS_DIR) -> dict:
             f"is missing -- see {log_dir / 'lammps_install.log'}"
         )
 
-    deps_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(deps_dir)
     link = deps_dir / "lammps-chimes"
     if link.is_symlink() or link.exists():
         link.unlink()

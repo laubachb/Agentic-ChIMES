@@ -19,6 +19,8 @@ from __future__ import annotations
 import datetime
 import json
 from pathlib import Path
+from ..io import atomic
+from ..io import fs
 
 NAME = "study"
 SUMMARY = "Create a study directory, register phase artifacts, or show a study's status."
@@ -75,7 +77,7 @@ def load(root: Path) -> dict:
 
 
 def save(root: Path, data: dict) -> None:
-    (root / "study.json").write_text(json.dumps(data, indent=1))
+    atomic.write_json((root / "study.json"), data, indent=1)
 
 
 def artifact(root: Path, key: str):
@@ -113,7 +115,7 @@ def run(args) -> dict:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     if getattr(args, "init", None):
         root = Path(args.init).resolve()
-        root.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(root)
         if (root / "study.json").is_file():
             raise ValueError(f"{root} is already a study; use --study {root}")
         for d in LAYOUT:

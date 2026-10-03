@@ -37,6 +37,7 @@ from pathlib import Path
 
 from . import evaluate, fm_setup_gen, model_build
 from ._compose import ns
+from ..io import fs
 
 NAME = "sweep"
 SUMMARY = "Grid sweep over 2b/3b/4b order, cutoffs, alpha/algorithm; reports a comparison table (not auto-tuning)."
@@ -177,7 +178,7 @@ def run(args) -> dict:
         raise ValueError(f"unknown grid key(s) {unknown}; sweepable: {GRID_KEYS}")
 
     out_root = Path(getattr(args, "output_dir", None) or ".")
-    out_root.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out_root)
 
     points = list(_grid_points(grid))
     results = []

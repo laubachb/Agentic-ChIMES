@@ -28,6 +28,8 @@ from pathlib import Path
 from .. import config, hpc, machines
 from ..converters import qe2xyzf
 from ..io import xyzf as xyzf_io
+from ..io import atomic
+from ..io import fs
 
 NAME = "qe-relabel"
 SUMMARY = "Submit QE single-point (SCF) labeling jobs; --collect converts finished output to .xyzf."
@@ -184,13 +186,13 @@ def _submit(args) -> dict:
     frame_indices = getattr(args, "frame_indices", None) or list(range(len(frames)))
 
     work_dir = Path(getattr(args, "output_dir", None) or ".")
-    work_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work_dir)
 
     commands = []
     frame_dirs = []
     for pos, frame_idx in enumerate(frame_indices):
         frame_dir = work_dir / f"frame_{pos:04d}"
-        frame_dir.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(frame_dir)
         frame_dirs.append(str(frame_dir))
 
         pw_in_text = _render_pw_in(
@@ -225,7 +227,7 @@ def _submit(args) -> dict:
         "elements": list(args.elements),
         "dft_settings": _dft_settings(args),
     }
-    (work_dir / _MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
+    atomic.write_json((work_dir / _MANIFEST_NAME), manifest, indent=2)
 
     profile = machines.load_profile(args.machine)
     dry_run = bool(getattr(args, "dry_run", False))
@@ -318,7 +320,7 @@ def _collect(args) -> dict:
             "frame_ids": ids,
         }
         provenance_path = work_dir / "provenance.json"
-        provenance_path.write_text(json.dumps(provenance, indent=1))
+        atomic.write_json(provenance_path, provenance, indent=1)
 
     n_converged = sum(1 for e in report if e["status"] == "converged")
     return {

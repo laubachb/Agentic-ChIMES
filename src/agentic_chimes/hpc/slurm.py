@@ -31,6 +31,7 @@ from typing import Optional
 
 from .. import config
 from . import dry_run as _dry_run
+from ..io import fs
 
 
 @contextlib.contextmanager
@@ -79,6 +80,7 @@ def submit_job(
     job_file: str = "run.cmd",
     email: bool = False,
     dry_run: bool = False,
+    expect: Optional[list] = None,
 ) -> JobHandle:
     """Submit (or, with dry_run=True, just render) a Slurm job on `profile`.
 
@@ -94,7 +96,7 @@ def submit_job(
         )
 
     work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work_dir)
     job_file_path = work_dir / job_file
     partition = profile.queue_for(queue)
 
@@ -122,6 +124,8 @@ def submit_job(
         )
 
     job_id = _launch(profile, job_file_path)
+    _record(work_dir, job_id=job_id, job_name=job_name, machine=profile.name, queue=partition,
+            job_file=job_file_path, walltime_hours=walltime_hours, expect=expect)
     return JobHandle(
         job_id=job_id,
         job_name=job_name,
@@ -131,6 +135,28 @@ def submit_job(
         machine=profile.name,
         queue=partition,
     )
+
+
+JOB_RECORD = "job.json"
+
+
+def _record(work_dir: Path, *, job_id, job_name, machine, queue, job_file, walltime_hours, expect) -> None:
+    """Write <work_dir>/job.json: what `job-status` needs to judge the job later
+    (id, and the result files a successful run leaves behind)."""
+    import time
+
+    from ..io import atomic
+
+    history = (atomic.read_json(work_dir / JOB_RECORD) or {}).get("history", [])
+    prev = atomic.read_json(work_dir / JOB_RECORD)
+    if prev and prev.get("job_id"):
+        history.append({k: prev.get(k) for k in ("job_id", "submitted_at")})
+    atomic.write_json(work_dir / JOB_RECORD, {
+        "job_id": job_id, "job_name": job_name, "machine": machine, "queue": queue, "job_file": str(job_file),
+        "walltime_hours": walltime_hours, "submitted_at": time.time(),
+        "expect": [str(Path(e) if Path(e).is_absolute() else Path(work_dir) / e) for e in (expect or [])],
+        "history": history,
+    }, indent=1)
 
 
 _NODE_LOCAL = ("/tmp", "/var/tmp", "/dev/shm")

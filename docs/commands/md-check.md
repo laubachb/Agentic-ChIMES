@@ -16,7 +16,6 @@ frames for active learning.
 chimes-agent md-check \
   --params 02_fit/search/best/params.txt --params 02_fit/search/points/<runner-up>/params.txt \
   --prototype '{"name":"CuZr","crystalstructure":"cesiumchloride","a":3.26}' \
-  --elements Cu,Zr --masses '{"Cu":63.546,"Zr":91.224}' \
   --temperatures 300,1200 --nsteps 5000 --reference-xyzf dft_md_1200K.xyzf \
   --output-dir 04_md/check
 

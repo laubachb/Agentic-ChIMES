@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .. import config, machines
 from . import _dlars_hpc, _solvers
+from ..io import fs
 
 NAME = "solve"
 SUMMARY = "Solve for params.txt from A.txt/b.txt (local: svd/ridge/lassolars/...; dlars/dlasso via --machine)."
@@ -198,7 +199,7 @@ def run(args) -> dict:
 
     algorithm = args.algorithm or "svd"
     work_dir = Path(getattr(args, "output_dir", None) or Path(args.A).resolve().parent)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(work_dir)
 
     if algorithm in _LOCAL_ALGORITHMS:
         return _run_local(args, algorithm, work_dir)

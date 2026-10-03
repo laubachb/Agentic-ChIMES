@@ -35,6 +35,8 @@ from ..data_sources import convert
 from ..io import xyzf as xyzf_io
 from . import dataset_select
 from ._compose import ns
+from ..io import atomic
+from ..io import fs
 
 NAME = "data-curate"
 SUMMARY = "Filter, analyze, subsample and split fetched pools into a ChIMES base dataset + data_manifest.json."
@@ -290,7 +292,7 @@ def run(args) -> dict:
         raise ValueError(f"every frame was filtered out: {dict(Counter(r['reason'].split()[0] for r in removed))}")
 
     out = Path(getattr(args, "output_dir", None) or ".")
-    out.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out)
 
     target_size = getattr(args, "target_size", None)
     selection_note = None
@@ -368,7 +370,7 @@ def run(args) -> dict:
         "reference_energies_ev_per_atom": ref_mu,
     }
     report_path = out / "curation_report.json"
-    report_path.write_text(json.dumps(report, indent=1))
+    atomic.write_json(report_path, report, indent=1)
 
     summary = {
         "n_frames": len(kept),
@@ -405,7 +407,7 @@ def run(args) -> dict:
         "curation_report": str(report_path),
     }
     manifest_path = out / "data_manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=1))
+    atomic.write_json(manifest_path, manifest, indent=1)
 
     return {
         "data_manifest": str(manifest_path),

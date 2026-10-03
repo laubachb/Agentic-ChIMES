@@ -89,3 +89,24 @@ def test_failed_run_can_be_retried_with_new_inputs(tmp_path):
     _manifest.begin(tmp_path, "stage-a", {"x": 1})
     _manifest.finish(tmp_path, "stage-a", {"x": 1}, {"error": "boom"}, status="failed")
     assert _manifest.begin(tmp_path, "stage-a", {"x": 2})[0] == "run"
+
+
+def test_concurrent_run_in_same_dir_is_refused(tmp_path):
+    import os
+    import socket
+
+    _manifest.begin(tmp_path, "stage-a", {"x": 1})          # this process: alive and "running"
+    with pytest.raises(_manifest.InputMismatch, match="still running"):
+        _manifest.begin(tmp_path, "stage-a", {"x": 1})
+    assert _manifest.begin(tmp_path, "stage-a", {"x": 1}, force=True)[0] == "run"
+    # a dead pid on this host does not block
+    import json
+    m = json.loads((tmp_path / ".manifest-stage-a.json").read_text())
+    m.update({"pid": 2 ** 22 + 12345, "host": socket.gethostname()})
+    (tmp_path / ".manifest-stage-a.json").write_text(json.dumps(m))
+    assert _manifest.begin(tmp_path, "stage-a", {"x": 1})[0] == "run"
+
+
+def test_truncated_manifest_is_treated_as_absent(tmp_path):
+    (tmp_path / ".manifest-stage-a.json").write_text('{"stage": "stage-a", "inp')
+    assert _manifest.begin(tmp_path, "stage-a", {"x": 1})[0] == "run"

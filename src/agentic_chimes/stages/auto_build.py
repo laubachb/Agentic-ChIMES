@@ -33,6 +33,7 @@ from .. import hpc, machines
 from ..io import xyzf as xyzf_io
 from . import _cutoffs, al_run, dataset_select, fm_setup_gen, qe_relabel, sweep
 from ._compose import ns
+from ..io import fs
 
 NAME = "auto-build"
 SUMMARY = "Unlabeled configs -> QE labeling -> data-driven cutoffs -> order sweep -> optimal model (-> optional AL stabilization)."
@@ -117,7 +118,7 @@ def add_arguments(parser) -> None:
 def run(args) -> dict:
     a = vars(args)
     out_dir = Path(a.get("output_dir") or ".")
-    out_dir.mkdir(parents=True, exist_ok=True)
+    fs.ensure_dir(out_dir)
 
     elements = a.get("elements")
     masses = a.get("masses")
@@ -280,7 +281,7 @@ def run(args) -> dict:
     stabilize = a.get("stabilize")
     if stabilize:
         alc0_dir = Path(stabilize["alc0_dir"])
-        alc0_dir.mkdir(parents=True, exist_ok=True)
+        fs.ensure_dir(alc0_dir)
         winning_fm_setup = sweep_dir / f"point_{best_idx:04d}" / "fm_setup.in"
         shutil.copy(winning_fm_setup, alc0_dir / "fm_setup.in")
         shutil.copy(train_xyzf, alc0_dir / Path(train_xyzf).name)

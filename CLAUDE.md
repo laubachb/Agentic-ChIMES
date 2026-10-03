@@ -13,7 +13,7 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   `data-curate`, `fingerprint`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
   `hyper-search`, `fm-setup-gen`,
   `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `al-select`, `al-merge`, `al-run`.
+  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `job-status`, `al-select`, `al-merge`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -33,6 +33,12 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   Stages that submit nothing reject `--dry-run`. Caveat:
   `auto-build --dry-run` only previews the QE submission, not the rest of
   the pipeline.
+- After a submission, `chimes-agent job-status --work-dir <dir>` says
+  whether it succeeded, failed (why, fix) or completed without results.
+- LAMMPS stages (`lammps-run`, `md-check`, `benchmark`) take element types
+  and masses from `params.txt`; pass `--masses` only to double-check.
+  LAMMPS matches types by mass, so a mismatch is refused. A rounded mass
+  silently gave a wrong energy before.
 - `--json-in` refuses unknown keys and wrong types. If it errors, fix the
   key name; don't drop the setting.
 

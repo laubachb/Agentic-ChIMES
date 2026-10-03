@@ -35,6 +35,11 @@ description: Safely submit and manage Slurm work for ChIMES - QE labeling, chime
 
 ## If a job looks wrong
 
+Start with `chimes-agent job-status --work-dir <dir>`. Every submission
+records `job.json` with the result files it should produce, and the stage
+returns `SUCCEEDED`, `FAILED` (with reason and fix) or
+`COMPLETED_WITHOUT_RESULTS`.
+
 - `squeue -u $USER`, `sacct -j <id> --format=JobID,State,Elapsed,ExitCode`.
 - COMPLETED but no files: filesystem issue above.
 - Stuck at iteration 0 with a huge `dlars.log`: `scancel` it and delete the
