@@ -10,6 +10,14 @@ Relative force error (force RMSE ÷ reference RMS force), plus
 `energy_weight` × per-atom energy RMSE when energies are fitted. Forces
 dominate: they are 3N rows per frame against one energy.
 
+$$
+\text{score} = \frac{\mathrm{RMSE}(F)}{\sqrt{\langle F_{\mathrm{ref}}^{2} \rangle}}
+\;+\; w_E \, \mathrm{RMSE}\!\left(\frac{E}{N_{\mathrm{atoms}}}\right)
+$$
+
+The terms a search chooses between are defined in
+[the ChIMES model](chimes_model.md).
+
 ## Where the score comes from
 
 - **Holdout** (default): the split written by `data-curate`. With ~30
@@ -37,6 +45,17 @@ paired bootstrap SE)`. The paired SE resamples the same frames for both
 models, so frame difficulty cancels, and small consistent differences are
 resolved.
 
+$$
+\text{tied}(p) \iff s_p - s_{\mathrm{best}} \;\le\; \max\!\left( \tau\, s_{\mathrm{best}},\;
+\mathrm{SE}_{\mathrm{boot}}\!\left[ s_p - s_{\mathrm{best}} \right] \right)
+$$
+
+with $\tau$ the tolerance (0.03) and the standard error taken over
+bootstrap resamples of the scored frames, the same resample applied to
+both models. Choosing the cheapest tied model operationalizes the
+published rule of taking the smallest parameters that give a converged
+result (Lindsey et al. 2017, [literature](literature.md)).
+
 ## The per-composition guard
 
 A tied point is rejected if any composition class (e.g. Cu, Zr, Cu-Zr
@@ -49,7 +68,8 @@ pooled 0.306 → 0.313). Rejections are listed as `group_regressions`.
 
 - `--prefer cheaper` (default, final models): the lowest estimated MD
   cost, (clusters per atom within each body order's cutoff) × (nonzero
-  coefficients of that order). Zeroed coefficients do not count, because
+  coefficients of that order),
+  $\;C_{\mathrm{MD}} = \sum_{n=2}^{4} \bar{N}_{n}(r_{\mathrm{out}}^{(n)})\, P_n^{\neq 0}$. Zeroed coefficients do not count, because
   `deploy` removes them.
 - `--prefer richer` (models that will go through active learning): the
   most coefficients. A sparse initial set makes cross-validation favor

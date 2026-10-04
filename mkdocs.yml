@@ -46,13 +46,23 @@ markdown_extensions:
       permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - md_in_html
 
 plugins:
   - search
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
   - Home: index.md
@@ -112,6 +122,13 @@ nav:
           - doctor: commands/doctor.md
           - submit: commands/submit.md
           - job-status: commands/job-status.md
+  - Methods:
+      - The workflow in pictures: concepts/workflow.md
+      - The ChIMES model: concepts/chimes_model.md
+      - Data selection and coverage: concepts/data_selection.md
+      - Active learning: concepts/active_learning.md
+      - How a model is chosen: concepts/model_selection.md
+      - Literature: concepts/literature.md
   - Concepts:
       - concepts/stages_and_contracts.md
       - concepts/claude_code_integration.md
@@ -121,8 +138,6 @@ nav:
       - concepts/machine_profiles.md
       - concepts/vendored_forks.md
       - concepts/qm_driver_plugins.md
-      - concepts/literature.md
-      - concepts/model_selection.md
   - Development:
       - development/assessment.md
       - development/fitting_audit.md

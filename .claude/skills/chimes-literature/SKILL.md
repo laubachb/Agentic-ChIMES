@@ -30,6 +30,11 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
 | C24 | Lindsey et al., *npj Comput. Mater.* 11, 26 (2025): ChIMES Carbon 2.0 | 10.1038/s41524-024-01497-y | `2024_npjCM_Lindsey_ChIMES_carbon_2.0.txt` | modern hyperparameter heuristics, weights, parallel/multi-fidelity AL, validation |
 | HT25 | Lindsey et al., *npj Comput. Mater.* 12, 18 (2026): hierarchical transfer learning | 10.1038/s41524-025-01863-4 | `2025_npjCM_Lindsey_hierarchical_transfer_learning.txt` | multi-element models from reusable element blocks; standard weights and AL weight decay |
 | FP26 | Laubach, Lordi, Lindsey, *JCIM* 66, 182 (2026): cluster-graph fingerprinting | 10.1021/acs.jcim.5c02179 | `2026_JCIM_Laubach_cluster_graph_fingerprinting.txt` | dataset coverage, novelty detection, AL stopping |
+| Q25 | Schwalbe-Koda, Hamel, Sadigh, Zhou, Lordi, *Nat. Commun.* 16 (2025): QUESTS | 10.1038/s41467-025-59232-0 | (not indexed) | dataset information entropy and saturation, δH novelty, entropy-maximizing selection |
+
+Equations for the model, selection metrics and active learning, with these
+citations, are in `docs/concepts/{chimes_model,data_selection,active_learning,model_selection}.md`;
+use them when writing a methods section.
 
 ## Inner cutoff and penalty
 

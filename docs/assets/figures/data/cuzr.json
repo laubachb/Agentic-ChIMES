@@ -1,0 +1,625 @@
+{
+"source": "Cu-Zr development study (126 MatPES-PBE training frames; 46 frames harvested from ChIMES MD of B2 CuZr at 300 and 1200 K)",
+"quests": {
+"bin_edges": [
+-6.0,
+-5.5,
+-5.0,
+-4.5,
+-4.0,
+-3.5,
+-3.0,
+-2.5,
+-2.0,
+-1.5,
+-1.0,
+-0.5,
+0.0,
+0.5,
+1.0,
+1.5,
+2.0,
+2.5,
+3.0,
+3.5,
+4.0,
+4.5,
+5.0,
+5.5,
+6.0,
+6.5,
+7.0,
+7.5,
+8.0,
+8.5,
+9.0,
+9.5,
+10.0,
+10.5,
+11.0,
+11.5,
+12.0,
+12.5,
+13.0,
+13.5,
+14.0,
+14.5,
+15.0,
+15.5,
+16.0,
+16.5,
+17.0,
+17.5,
+18.0,
+18.5,
+19.0,
+19.5,
+20.0,
+20.5,
+21.0,
+21.5,
+22.0,
+22.5,
+23.0,
+23.5,
+24.0,
+24.5,
+25.0,
+25.5,
+26.0,
+26.5,
+27.0,
+27.5,
+28.0,
+28.5,
+29.0,
+29.5,
+30.0
+],
+"reference_dH_density": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.14742,
+0.07862,
+0.14742,
+0.05405,
+0.26536,
+0.82064,
+0.48649,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"candidate_dH_density": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.08696,
+0.0,
+0.0,
+0.00101,
+0.00564,
+0.0149,
+0.03251,
+0.04962,
+0.0785,
+0.09732,
+0.12218,
+0.13798,
+0.1558,
+0.15308,
+0.15741,
+0.14704,
+0.13657,
+0.12359,
+0.10437,
+0.08635,
+0.06381,
+0.05576,
+0.04076,
+0.0311,
+0.02355,
+0.01852,
+0.016,
+0.01278,
+0.01027,
+0.00775,
+0.00453,
+0.00463,
+0.00393,
+0.00322,
+0.00282,
+0.00141,
+0.00201,
+0.00101,
+0.00111,
+0.0006,
+0.0005,
+0.0004,
+0.0002,
+0.0003,
+0.0002,
+0.0005,
+0.0002,
+0.0002,
+0.0002,
+0.0002,
+0.0002,
+0.0,
+0.0001,
+0.0,
+0.0001,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0001,
+0.0001,
+0.0001
+],
+"threshold": -0.003,
+"entropy_curve": [
+{
+"fraction": 0.125,
+"n_frames": 16,
+"entropy": 3.1563
+},
+{
+"fraction": 0.25,
+"n_frames": 32,
+"entropy": 3.7368
+},
+{
+"fraction": 0.5,
+"n_frames": 63,
+"entropy": 4.3795
+},
+{
+"fraction": 0.75,
+"n_frames": 94,
+"entropy": 4.6229
+},
+{
+"fraction": 1.0,
+"n_frames": 126,
+"entropy": 4.9367
+}
+]
+},
+"learning_curve": [
+{
+"fraction": 0.125,
+"n_frames": 16,
+"relative_force_error": 0.4694,
+"relative_force_error_spread": 0.023,
+"rmse_energy_per_atom": 1.8886
+},
+{
+"fraction": 0.25,
+"n_frames": 32,
+"relative_force_error": 0.3755,
+"relative_force_error_spread": 0.0197,
+"rmse_energy_per_atom": 1.249
+},
+{
+"fraction": 0.5,
+"n_frames": 63,
+"relative_force_error": 0.3124,
+"relative_force_error_spread": 0.0116,
+"rmse_energy_per_atom": 1.0231
+},
+{
+"fraction": 0.75,
+"n_frames": 94,
+"relative_force_error": 0.3126,
+"relative_force_error_spread": 0.006,
+"rmse_energy_per_atom": 0.8899
+},
+{
+"fraction": 1.0,
+"n_frames": 126,
+"relative_force_error": 0.3127,
+"relative_force_error_spread": 0.0,
+"rmse_energy_per_atom": 0.8539
+}
+],
+"structure_weight": {
+"0.25": 253.45,
+"0": 56.51,
+"0.5": 227.48,
+"0.75": 91.23,
+"1": 34.14,
+"type-agnostic": 2.21
+},
+"al_batch": [
+{
+"quests_dH_max": 21.6202,
+"committee_force_spread": 1.2479,
+"fingerprint_Dj2": 66099.2556,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 25.0374,
+"committee_force_spread": 1.1978,
+"fingerprint_Dj2": 63539.2302,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 23.9896,
+"committee_force_spread": 1.1982,
+"fingerprint_Dj2": 61938.3531,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 23.1604,
+"committee_force_spread": 1.1849,
+"fingerprint_Dj2": 62729.227,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 19.5602,
+"committee_force_spread": 1.1439,
+"fingerprint_Dj2": 74379.6203,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 28.9711,
+"committee_force_spread": 1.1692,
+"fingerprint_Dj2": 61738.9816,
+"close_contact": true,
+"selected": false
+},
+{
+"quests_dH_max": 26.2137,
+"committee_force_spread": 1.1794,
+"fingerprint_Dj2": 56696.0009,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 37.4478,
+"committee_force_spread": 1.2161,
+"fingerprint_Dj2": 49138.9577,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 21.67,
+"committee_force_spread": 1.1756,
+"fingerprint_Dj2": 61072.3156,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 17.5227,
+"committee_force_spread": 1.0542,
+"fingerprint_Dj2": 72598.6227,
+"close_contact": true,
+"selected": false
+},
+{
+"quests_dH_max": 23.6453,
+"committee_force_spread": 1.2096,
+"fingerprint_Dj2": 53232.181,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 17.8315,
+"committee_force_spread": 1.2301,
+"fingerprint_Dj2": 56497.6669,
+"close_contact": true,
+"selected": false
+},
+{
+"quests_dH_max": 24.0868,
+"committee_force_spread": 1.162,
+"fingerprint_Dj2": 56527.0021,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 23.4351,
+"committee_force_spread": 1.1804,
+"fingerprint_Dj2": 55239.3388,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 21.4903,
+"committee_force_spread": 1.2266,
+"fingerprint_Dj2": 53052.3598,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 29.4157,
+"committee_force_spread": 1.1899,
+"fingerprint_Dj2": 42884.3337,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 18.3131,
+"committee_force_spread": 1.2527,
+"fingerprint_Dj2": 52791.4841,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 14.3635,
+"committee_force_spread": 0.9347,
+"fingerprint_Dj2": 65078.733,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 17.8597,
+"committee_force_spread": 1.2134,
+"fingerprint_Dj2": 54773.9682,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 19.4006,
+"committee_force_spread": 1.1803,
+"fingerprint_Dj2": 55845.8722,
+"close_contact": true,
+"selected": true
+},
+{
+"quests_dH_max": 22.5021,
+"committee_force_spread": 1.2147,
+"fingerprint_Dj2": 42728.4732,
+"close_contact": true,
+"selected": false
+},
+{
+"quests_dH_max": 15.1146,
+"committee_force_spread": 1.1706,
+"fingerprint_Dj2": 58198.8782,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 18.8903,
+"committee_force_spread": 1.2022,
+"fingerprint_Dj2": 50967.0402,
+"close_contact": true,
+"selected": false
+},
+{
+"quests_dH_max": 13.3211,
+"committee_force_spread": 0.8726,
+"fingerprint_Dj2": 66598.1032,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.7666,
+"committee_force_spread": 0.9003,
+"fingerprint_Dj2": 73869.9643,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 18.3441,
+"committee_force_spread": 1.1871,
+"fingerprint_Dj2": 52217.3806,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.4333,
+"committee_force_spread": 0.9295,
+"fingerprint_Dj2": 61630.1456,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 14.225,
+"committee_force_spread": 0.8696,
+"fingerprint_Dj2": 61811.3293,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 14.8187,
+"committee_force_spread": 1.1428,
+"fingerprint_Dj2": 56451.8896,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 15.552,
+"committee_force_spread": 1.1024,
+"fingerprint_Dj2": 55439.9562,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.3053,
+"committee_force_spread": 0.8815,
+"fingerprint_Dj2": 70914.7657,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.1235,
+"committee_force_spread": 0.8589,
+"fingerprint_Dj2": 69016.7047,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.5879,
+"committee_force_spread": 0.8948,
+"fingerprint_Dj2": 60060.0524,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.7841,
+"committee_force_spread": 0.8722,
+"fingerprint_Dj2": 64613.883,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.0133,
+"committee_force_spread": 0.902,
+"fingerprint_Dj2": 59904.7968,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 13.869,
+"committee_force_spread": 0.8667,
+"fingerprint_Dj2": 57679.4572,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.2986,
+"committee_force_spread": 0.8619,
+"fingerprint_Dj2": 61561.886,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.3532,
+"committee_force_spread": 0.8504,
+"fingerprint_Dj2": 63510.0621,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.0114,
+"committee_force_spread": 0.8,
+"fingerprint_Dj2": 61757.3573,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.5085,
+"committee_force_spread": 0.8325,
+"fingerprint_Dj2": 57644.4392,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.6239,
+"committee_force_spread": 0.8527,
+"fingerprint_Dj2": 58723.7094,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 12.3722,
+"committee_force_spread": 0.872,
+"fingerprint_Dj2": 53143.2948,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.314,
+"committee_force_spread": 0.8956,
+"fingerprint_Dj2": 53743.579,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": 11.2552,
+"committee_force_spread": 0.8261,
+"fingerprint_Dj2": 54131.5016,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": -0.6464,
+"committee_force_spread": 0.0,
+"fingerprint_Dj2": 44003.9629,
+"close_contact": false,
+"selected": false
+},
+{
+"quests_dH_max": -0.6464,
+"committee_force_spread": 0.0,
+"fingerprint_Dj2": 44003.9629,
+"close_contact": false,
+"selected": false
+}
+]
+}

@@ -17,6 +17,12 @@ each, and where it departs from them (usually a known gap, listed in the
 | Lindsey et al., *npj Comput. Mater.* **11**, 26 (2025): ChIMES Carbon 2.0 | [10.1038/s41524-024-01497-y](https://doi.org/10.1038/s41524-024-01497-y) | current hyperparameter heuristics, weights, parallel and multi-fidelity active learning, validation |
 | Lindsey et al., *npj Comput. Mater.* **12**, 18 (2026): hierarchical transfer learning | [10.1038/s41524-025-01863-4](https://doi.org/10.1038/s41524-025-01863-4) | multi-element models built from reusable element blocks, weight decay across active-learning cycles |
 | Laubach, Lordi, Lindsey, *J. Chem. Inf. Model.* **66**, 182 (2026): cluster-graph fingerprinting | [10.1021/acs.jcim.5c02179](https://doi.org/10.1021/acs.jcim.5c02179) | dataset coverage, novelty detection, a criterion for when to stop active learning |
+| Schwalbe-Koda, Hamel, Sadigh, Zhou, Lordi, *Nat. Commun.* **16** (2025): information entropy of atomistic datasets (QUESTS) | [10.1038/s41467-025-59232-0](https://doi.org/10.1038/s41467-025-59232-0) | model-free dataset entropy and saturation, novelty (δH) of environments, entropy-maximizing selection |
+
+The equations and figures behind these uses are on the Methods pages:
+[the ChIMES model](chimes_model.md), [data selection and coverage](data_selection.md),
+[active learning](active_learning.md), [how a model is chosen](model_selection.md)
+and [the workflow in pictures](workflow.md).
 
 ## What the toolkit adopts
 
@@ -53,7 +59,7 @@ each, and where it departs from them (usually a known gap, listed in the
 | Stresses | needed for density and pressure; weights 100-250 | carried from open data and QE (sign verified per dataset); `hyper-search` fits them and measures the stress weight | published weights assume large cells: on 2-atom cells 100 wrecked the fit, 3 was best |
 | Validation | RDF, EOS, diffusion, spectra, speciation vs DFT | `md-check`: stability, close contacts, RDF vs reference | EOS, diffusion by hand |
 | Multi-element fitting | hierarchical element blocks (al_driver 2.0) | [hierarch](../commands/hierarch.md) (subtract, combine) | tied with all-at-once on Cu-Zr |
-| Coverage / stopping AL | cluster-graph fingerprints | [fingerprint](../commands/fingerprint.md) (native, matches the shipped tool) | type-agnostic, as in the paper |
+| Coverage / stopping AL | cluster-graph fingerprints | [fingerprint](../commands/fingerprint.md) (native, matches the shipped tool); QUESTS entropy alongside | type-agnostic by default; `--structure-weight` adds element awareness |
 
 ## For agents
 

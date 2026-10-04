@@ -25,6 +25,10 @@ You approve every cluster job, and every step is a plain command
 - **[The agents](guide/agents.md)**: who does what, and what they never do.
 - **[Worked example: Cu-Zr](guide/example_cuzr.md)**: a real study,
   numbers included.
+- **[Methods](concepts/workflow.md)**: the workflow in pictures, the
+  [ChIMES model](concepts/chimes_model.md) in equations,
+  [data selection](concepts/data_selection.md) (QUESTS, fingerprints) and
+  [active learning](concepts/active_learning.md), with references.
 
 </div>
 

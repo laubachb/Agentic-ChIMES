@@ -2,6 +2,15 @@
 
 ## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
 
+- **Methods pages with equations, diagrams and figures**: the workflow in
+  pictures (Mermaid), the ChIMES model (expansion, transform, smoothing,
+  penalty, fit), data selection and coverage (QUESTS entropy and δH,
+  farthest-point sampling, fingerprints and the element-aware metric,
+  learning curves), active learning (round, batch scoring, committee
+  spread, weight decay, stopping) and the selection rules, each cited to
+  its paper. Figures are drawn by `tools/make_doc_figures.py`; four use the
+  Cu-Zr study's own results. The site now renders math (MathJax) and
+  diagrams. QUESTS (Schwalbe-Koda et al. 2025) added to the literature list.
 - **CI**: `scipy` and `scikit-learn` are now declared dependencies (the
   local solvers import them; a clean install failed two solver tests, which
   is what broke the unit-test workflow). Both workflows repeat test, build
