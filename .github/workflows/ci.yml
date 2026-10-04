@@ -23,4 +23,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,data]"
-      - run: pytest tests/unit -v
+      - name: Unit tests
+        # failures are repeated as annotations, so they show on the run's summary page without opening the log
+        run: |
+          set -o pipefail
+          pytest tests/unit -v -rf | tee pytest.out || {
+            grep -E '^(FAILED|ERROR) ' pytest.out | sed 's/^/::error::/'
+            exit 1
+          }

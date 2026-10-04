@@ -2,6 +2,11 @@
 
 ## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
 
+- **CI**: `scipy` and `scikit-learn` are now declared dependencies (the
+  local solvers import them; a clean install failed two solver tests, which
+  is what broke the unit-test workflow). Both workflows repeat test, build
+  and `doctor` failures as annotations, and the integration build step now
+  fails when `setup` reports a failed component instead of passing silently.
 - **`lammps-run --machine`**: one Slurm job that re-runs the stage on the
   compute node (inputs, types and masses checked before submission; ranks
   sized to the system; `srun` inside the allocation; `thermo_last` for MD;

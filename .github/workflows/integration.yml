@@ -44,17 +44,42 @@ jobs:
           fi
       - run: pip install -e ".[dev,data]"
       - name: Build (generic profile)
+        # `setup` reports a failed build in its JSON and exits 0, so check the JSON and annotate what failed
         run: |
           chimes-agent setup --component codes
-          chimes-agent setup --machine generic --component chimes_lsq --component chimes_calculator --component lammps
+          chimes-agent setup --machine generic --component chimes_lsq --component chimes_calculator --component lammps | tee setup.json
+          python - <<'PY'
+          import json, sys
+          d = json.load(open("setup.json"))
+          bad = {k: v for k, v in d.get("results", {}).items() if isinstance(v, dict) and v.get("status") == "failed"}
+          for k, v in bad.items():
+              print(f"::error title=build {k} failed::{str(v.get('error'))[-900:]}".replace("\n", "%0A"))
+          if "error" in d:
+              print(f"::error title=setup failed::{str(d['error'])[-900:]}".replace("\n", "%0A"))
+          sys.exit(1 if bad or "error" in d else 0)
+          PY
       - name: Doctor
         run: |
           chimes-agent doctor | tee doctor.json
-          python -c "import json,sys; d=json.load(open('doctor.json')); sys.exit(1 if d['n_fail'] else 0)"
+          python - <<'PY'
+          import json, sys
+          d = json.load(open("doctor.json"))
+          if "error" in d:
+              print(f"::error title=doctor crashed::{str(d['error'])[-900:]}".replace("\n", "%0A"))
+              sys.exit(1)
+          for c in d["checks"]:
+              if c["status"] == "fail":
+                  print(f"::error title=doctor: {c['check']}::{str(c['detail'])[-900:]}".replace("\n", "%0A"))
+          sys.exit(1 if d["n_fail"] else 0)
+          PY
       - name: Unit tests (nothing skipped for missing builds)
-        run: pytest tests/unit -v -rs
+        run: |
+          set -o pipefail
+          pytest tests/unit -v -rs -rf | tee pytest.out || { grep -E '^(FAILED|ERROR) ' pytest.out | sed 's/^/::error::/'; exit 1; }
       - name: End-to-end study
-        run: pytest tests/integration -v -rs
+        run: |
+          set -o pipefail
+          pytest tests/integration -v -rs -rf | tee pytest_integration.out || { grep -E '^(FAILED|ERROR) ' pytest_integration.out | sed 's/^/::error::/'; exit 1; }
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
