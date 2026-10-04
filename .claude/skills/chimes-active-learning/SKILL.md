@@ -1,6 +1,6 @@
 ---
 name: chimes-active-learning
-description: Improve or stabilize a ChIMES model with active learning - toolkit-managed rounds (md-check harvest, fingerprint novelty, al-select, qe-relabel, al-merge, refit at the chosen hyperparameters with n/I weight decay, re-validate, fingerprint stopping) or al_driver's unattended loop (al-run). Use when the user wants to improve or stabilize a model with more data, asks about al-select/al-run/al-merge, wants the next batch of configs to label, or mentions active learning / ALC cycles / unstable MD. The chimes-active-learner subagent follows this playbook.
+description: Improve or stabilize a ChIMES model with active learning - toolkit-managed rounds (md-check harvest, al-batch selection from close contacts + QUESTS + fingerprint + committee, qe-relabel, al-merge, refit at the chosen hyperparameters with n/I weight decay, re-validate, al-status stopping verdict) or al_driver's unattended loop (al-run). Use when the user wants to improve or stabilize a model with more data, asks about al-batch/al-select/al-run/al-merge/al-status, wants the next batch of configs to label, or mentions active learning / ALC cycles / unstable MD. The chimes-active-learner subagent follows this playbook.
 ---
 
 # Active learning
@@ -63,8 +63,6 @@ One round, in `<study>/03_al/round<k>/`, each step a stage call:
 - or the user's budget is reached.
 
 Published runs converged in about 8 cycles (Lindsey 2020).
-
-## Tools for single steps
 
 ## `al-select` — one diverse batch (standalone)
 
@@ -141,11 +139,14 @@ test is `codes/al_driver-LLfork/examples/simple_iter_single_statepoint-lmp-test/
 
 ## Choosing
 
-- Want the next batch of frames to label, under your own control: `al-select`.
+- Want the next batch of frames to label, under your own control:
+  `al-batch` (close contacts + novelty + committee uncertainty, within a
+  budget); `al-select` only for very large pools where energy-histogram
+  diversity is enough.
 - Want an unattended stabilization campaign and have a prepared study, or
   `auto-build --stabilize`: `al-run`.
-- Uncertainty-based (committee) selection is not implemented; `evaluate`
-  with several `--params` returns `committee_spread` if the user wants to
-  rank candidates by disagreement themselves.
+- Want to know whether to continue: `al-status` (rounds scored on the fixed
+  holdout) and `learning-curve` (is more data worth it at all).
 
-Reference: `docs/commands/al-select.md`, `docs/commands/al-run.md`.
+Reference: `docs/commands/al-batch.md`, `docs/commands/al-status.md`,
+`docs/commands/al-select.md`, `docs/commands/al-run.md`.

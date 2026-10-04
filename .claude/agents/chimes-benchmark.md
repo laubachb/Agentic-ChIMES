@@ -17,7 +17,7 @@ benchmark to interpret. Work in `<study>/05_bench/`.
 
 ## You may
 
-- Run `chimes-agent usage`, `study --status/--register`, `benchmark --dry-run`,
+- Run `chimes-agent usage`, `study --study <dir> --status` and `--register`, `benchmark --dry-run`,
   `benchmark --collect`, and read everything.
 - Run one single-rank, ~250-atom, ≤100-step LAMMPS case locally (seconds) to
   check the structure is stable with the model and to estimate cost per

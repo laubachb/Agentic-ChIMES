@@ -2,6 +2,25 @@
 
 ## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
 
+- **`lammps-run --machine`**: one Slurm job that re-runs the stage on the
+  compute node (inputs, types and masses checked before submission; ranks
+  sized to the system; `srun` inside the allocation; `thermo_last` for MD;
+  `job-status` verdicts). Checked on Dane: 1 and 4 ranks give identical
+  thermo output.
+- **`setup --ref REPO=COMMIT`**: a vendored fork at another commit for one
+  call, without editing the pin. **`setup --init-profile PATH`**: writes a
+  machine profile from `sinfo`/`sacctmgr` (on Dane it reproduces the built-in
+  profile) and lists what it could not determine.
+- **`study --status`**: a one-screen dashboard (phases with headline
+  numbers, jobs, what waits on the user, CPU-hours), also `STATUS.md`.
+- **Docs and workflow audit**: a generated [All options](docs/commands/options.md)
+  reference (every stage's flags, types, defaults; `tools/gen_options_doc.py`,
+  kept fresh by a test); the study layout, playbooks and agent descriptions
+  now describe the active-learning round directory, `al-batch`/`al-status`,
+  the validation registry keys and the composite stages; stale statements
+  removed (`study --status`, "committee selection not implemented", the
+  planned packed-frames module, stub stages); the Cu-Zr example gained the
+  cross-validated re-search; install extras `plots` and `quests` documented.
 - **Element-aware fingerprints** (`fingerprint --structure-weight α`,
   `--structure-weights` sweep, `--descriptor mass|number`; `al-batch
   --structure-weight`): the paper's hybrid metric (α · structure +

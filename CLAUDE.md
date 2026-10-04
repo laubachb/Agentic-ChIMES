@@ -49,6 +49,11 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   separates MD from training.
 - After a submission, `chimes-agent job-status --work-dir <dir>` says
   whether it succeeded, failed (why, fix) or completed without results.
+  `chimes-agent study --study <dir> --status` is the whole study on one
+  screen: phases, jobs, what waits on the user, CPU-hours.
+- Long MD: `lammps-run --machine` (one job, plain run) or `md-check
+  --machine` (several models/temperatures with stability analysis). A new
+  cluster: `setup --init-profile <file>` writes its machine profile.
 - LAMMPS stages (`lammps-run`, `md-check`, `eos-check`, `benchmark`) take element types
   and masses from `params.txt`; pass `--masses` only to double-check.
   LAMMPS matches types by mass, so a mismatch is refused. A rounded mass

@@ -19,6 +19,8 @@ chimes-agent setup --machine dane --component chimes_calculator
 chimes-agent setup --machine dane --component quantum_espresso --qe-version qe-7.3.1
 chimes-agent setup --component codes   # just clone codes/, no build, no --machine needed
 chimes-agent setup --status
+chimes-agent setup --init-profile ./my_cluster.yaml --scratch /scratch/$USER --modules gcc/12,openmpi/4   # write a machine profile
+chimes-agent setup --component codes --ref chimes_lsq=<commit>   # one fork at another commit, this once
 ```
 
 ## Flags
@@ -34,6 +36,25 @@ chimes-agent setup --status
   (`build_quantum_espresso.DEFAULT_QE_VERSION`; check
   https://gitlab.com/QEF/q-e/-/tags before relying on the built-in default)
 - `--status` — report `deps/installed.json` contents and exit, no build
+- `--ref REPO=COMMIT` (repeatable) — check one vendored fork out at a
+  commit, branch or tag other than its pin, for this call (`REPO` is
+  `al_driver`, `chimes_lsq` or `chimes_calculator`; the `-LLfork` suffix is
+  optional). The fork is fetched and checked out even if already cloned; the
+  result names the pin it replaced and reminds you to rebuild what depends
+  on it. The pin in `setup/clone_codes.py` is unchanged, so the next plain
+  `setup --component codes --force` returns to it. See
+  [vendored forks](../concepts/vendored_forks.md).
+- `--init-profile PATH` — write a machine profile for this cluster and
+  exit; nothing is built. Partitions, cores per node and your Slurm accounts
+  are read from `sinfo` and `sacctmgr`; give `--scratch DIR` (shared job
+  directory), `--modules a,b`, and optionally `--account`,
+  `--debug-partition`, `--batch-partition`, `--cores-per-node`,
+  `--hosttype`. Whatever could not be determined is listed in `todo` and as
+  `# TODO` lines in the file. The account is written as
+  `${CHIMES_ACCOUNT:-<yours>}` so the file can be shared. On Dane this
+  reproduces the built-in profile from the scheduler alone. `--force`
+  overwrites an existing file. See
+  [machine profiles](../concepts/machine_profiles.md).
 - `--force` (generic flag) — rebuild even if already recorded for this
   machine
 

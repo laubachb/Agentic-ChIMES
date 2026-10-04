@@ -57,17 +57,21 @@ chimes-agent fm-setup-gen --json-in in.json --json-out out.json
 (visible via `--describe` or by reading the stage module's
 `add_arguments`); when both are given, JSON wins.
 
-## No stage calls another stage
+## Primitive stages do not know about each other
 
 `fm-setup-gen`'s output includes `fm_setup_in`; `amat-build` takes
 `fm_setup_in` as input; `solve` takes `amat-build`'s `A`/`b`/`header`/`map`
-outputs; `evaluate` takes `solve`'s `params` output. Composing them —
-deciding whether to re-run `fm-setup-gen` with different cutoffs before
-building, or to run `sweep` instead of a single `solve` — is the caller's
-job (human or agent), not baked into the stages themselves. This is a
-deliberate contrast with al_driver's `main.py`, which walks a fixed
-build→solve→MD→QM→post-process sequence as one long blocking process; see
-the "Why not al_driver's loop directly" section below.
+outputs; `evaluate` takes `solve`'s `params` output. Deciding whether to
+re-run `fm-setup-gen` with different cutoffs before building is the
+caller's job (human or agent). *Composite* stages exist for the recurring
+pipelines (`model-build`, `sweep`, `hyper-search`, `learning-curve`,
+`committee`, `al-batch`, `auto-build`): they call the primitives' `run()`
+functions in-process (`stages/_compose.py`), never the CLI as a subprocess,
+and they report every intermediate result rather than hiding it. Only
+`auto-build` makes a choice for the caller. This is a deliberate contrast
+with al_driver's `main.py`, which walks a fixed build→solve→MD→QM→post-
+process sequence as one long blocking process; see the "Why not al_driver's
+loop directly" section below.
 
 ## Idempotency: the manifest, not `restart.dat`
 
@@ -131,12 +135,12 @@ agent (or a human) figures out a stage's contract without reading source.
 
 ## Phasing
 
-This repo was built incrementally. Stages not yet implemented still
-register a real subcommand (`--describe` works, flags parse,
-`--json-in`/`--json-out` work) whose `run()` just echoes its parsed input
-back — see `stages/_stub.py`. This means the CLI surface a caller (human
-or agent) depends on has been stable since Phase 0; swapping a stub's
-`run()` for real logic never changes how the stage is invoked.
+This repo was built incrementally. While a stage was unimplemented it
+still registered a real subcommand (`--describe` worked, flags parsed,
+`--json-in`/`--json-out` worked) whose `run()` echoed its parsed input
+back (`stages/_stub.py`, kept for new stages). The CLI surface a caller
+depends on has therefore been stable since Phase 0; every stage is now
+implemented.
 
 Build order, and why:
 
@@ -199,6 +203,14 @@ Build order, and why:
    scaling → cost model), `deploy` (model card), `study-report`, driven by the
    `chimes-benchmark` and `chimes-report-writer` subagents. Documentation was
    reorganized around using the toolkit (User guide).
+10. **Validation and active-learning tooling** — `md-check`, `eos-check`,
+    `fingerprint` (native, with the element-aware metric), `quests`,
+    `committee`, `learning-curve`, `weights`, `hierarch`, `al-batch`,
+    `al-merge`, `al-status`, `qe-converge`, `job-status`, `doctor`; cross-
+    validation, smoothing/α/stress stages and a generated report in
+    `hyper-search`; plots throughout and a fuller `study-report`. Driven by
+    the `chimes-md-validator` and `chimes-active-learner` subagents. See the
+    CHANGELOG for what each pass found.
 
 ## Why not al_driver's loop directly — and where `al-run` fits
 

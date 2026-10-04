@@ -73,11 +73,17 @@ chimes-agent setup --component codes --force
 chimes-agent setup --component chimes_lsq --machine dane --force
 ```
 
-Or, for a one-off without editing the file, `ensure_repo`/`ensure_all`
-accept a `ref` override programmatically (not yet exposed as a `--ref` CLI
-flag on `chimes-agent setup` — pass it via the Python API,
-`agentic_chimes.setup.clone_codes.ensure_repo(name, codes_dir=..., ref=...)`,
-or edit `REPOS` directly).
+Or, for a one-off without editing the file:
+
+```bash
+chimes-agent setup --component codes --ref chimes_lsq=<commit-or-branch>
+chimes-agent setup --component chimes_lsq --machine dane --force     # rebuild what depends on it
+```
+
+`--ref` fetches and checks out that fork at the given ref and leaves the
+pin alone; the result reports the pin it replaced. Models built this way
+are no longer at the validated commits, so record the ref in the study's
+`STUDY.md`. A plain `setup --component codes --force` returns to the pins.
 
 ## Standalone clone, no build
 

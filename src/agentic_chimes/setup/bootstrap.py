@@ -41,6 +41,7 @@ def run_setup(
     machine: str,
     force: bool = False,
     qe_version: Optional[str] = None,
+    refs: Optional[dict] = None,
 ) -> dict:
     if "all" in components:
         components = list(ALL_COMPONENTS)
@@ -49,7 +50,11 @@ def run_setup(
     if unknown:
         raise ValueError(f"unknown setup component(s) {unknown}; known: {ALL_COMPONENTS}")
 
-    results = {"codes": clone_codes.ensure_all(codes_dir=config.CODES_DIR, force=force)}
+    results = {"codes": clone_codes.ensure_all(codes_dir=config.CODES_DIR, force=force, refs=refs)}
+    if refs:
+        results["notes"] = [f"{name} checked out at {ref} instead of its pin: rebuild what depends on it "
+                            "(--component ... --force), and results are no longer at the validated commits"
+                            for name, ref in refs.items()]
 
     build_components = [c for c in components if c != "codes"]
     if not build_components:

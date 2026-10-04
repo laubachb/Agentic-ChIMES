@@ -5,14 +5,18 @@
 ```bash
 git clone https://github.com/laubachb/Agentic-ChIMES.git
 cd Agentic-ChIMES
-pip install -e ".[data,al-select]"
+pip install -e ".[data,al-select,plots,quests]"
 ```
 
 - The core install is `numpy`, `pyyaml` and `jsonschema`.
 - `data` adds ASE, pyarrow and the Hugging Face client for the open-data
   stages.
 - `al-select` adds matplotlib, which al_driver's selector imports.
-- `dev` and `docs` add pytest and MkDocs.
+- `plots` adds matplotlib for the PNGs the validation stages and the report
+  produce; `quests` adds QUESTS (information entropy of environments) for
+  `quests`, `--selection quests` and `al-batch`.
+- `dev` and `docs` add pytest and MkDocs. `chimes-agent doctor` reports
+  which optional pieces are missing.
 
 ## 2. Build the ChIMES toolchain
 
@@ -36,9 +40,11 @@ time with `--component chimes_lsq | chimes_calculator | lammps |
 quantum_espresso`.
 
 Machines: `dane` (LLNL LC) and `stampede3` (TACC) are built in. For another
-Slurm cluster, copy one of `src/agentic_chimes/machines/profiles/*.yaml`, edit
-the account, partitions, cores per node and modules, and pass the file path
-to `--machine` ([machine profiles](concepts/machine_profiles.md)).
+Slurm cluster, `chimes-agent setup --init-profile ./my_cluster.yaml --scratch
+<shared dir> --modules <compiler>,<mpi>` writes a profile from what the
+scheduler reports (partitions, cores per node, your accounts) and lists what
+is left to fill in; pass the file path to `--machine`
+([machine profiles](concepts/machine_profiles.md)).
 
 Optional but recommended: `export HF_TOKEN=...` (a free Hugging Face read
 token). Anonymous downloads of open datasets are rate-limited per IP address,

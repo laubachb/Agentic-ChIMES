@@ -73,6 +73,21 @@ that phase's charge ~4×.
    with the grids widened past 8 Å (2-body) and 7 Å (3-body), and
    re-judged exclusions; multi-node benchmark before large runs.
 
+## Since then
+
+The same data was re-searched with the later tooling (`hyper-search
+--cv-folds 4`, smoothing, per-pair λ, α and stress stages; 36 fits on
+`pdebug` in 9 min): 2-body order 6 at 7.0 Å, 3-body order 4 at 5.77 Å (a
+refined midpoint), Cu-Cu-Zr and Cu-Zr-Zr excluded, CUBIC smoothing, α =
+1e-5. Cross-validated relative force error 0.411 ± 0.035 (external holdout
+0.33), 11 fragile frames; the learning curve plateaus from 63 frames for
+forces while energy error keeps falling, so more of the same data will not
+improve forces. `md-check` harvested 46 frames at 300/1200 K, all novel by
+fingerprint and QUESTS; `al-batch` cut them to 15 to label. The numbers
+are in [hyper-search](../commands/hyper-search.md),
+[learning-curve](../commands/learning-curve.md),
+[fingerprint](../commands/fingerprint.md) and [al-batch](../commands/al-batch.md).
+
 ## The same study as commands
 
 ```bash
@@ -81,7 +96,7 @@ chimes-agent study --init $S --elements Cu,Zr --goal "Cu-Zr from MatPES"
 chimes-agent data-fetch --source colabfit:colabfit/MatPES-PBE-2025.2 --elements Cu,Zr --all-frames --output-dir $S/01_data/fetch
 chimes-agent data-curate --frames $S/01_data/fetch/pool.xyzf --elements Cu,Zr --output-dir $S/01_data/curate
 chimes-agent hyper-search --data-manifest $S/01_data/curate/data_manifest.json \
-  --s-maxim-3b 4.09,5.2,6.33,7.0 --machine dane --queue debug --walltime-hours 1 --output-dir $S/02_fit   # approve, wait
+  --s-maxim-3b 4.09,5.2,6.33,7.0 --cv-folds 4 --machine dane --queue debug --walltime-hours 1 --output-dir $S/02_fit   # approve, wait
 chimes-agent benchmark --params $S/02_fit/search/best/params.txt \
   --prototype '{"name":"CuZr","crystalstructure":"cesiumchloride","a":3.26}' \
   --elements Cu,Zr --masses '{"Cu":63.546,"Zr":91.224}' --strong-atoms 8000 \

@@ -116,7 +116,7 @@ Ranked by consequence.
   user's allocation (`TG-CHM250118`) and scratch path, and `dane.yaml` the
   `pls2` bank and the `mat_mcts` conda env. Ship templates with `${ACCOUNT}`
   and `${USER}` placeholders, plus `chimes-agent setup --init-profile`, which
-  asks for account, partition and scratch space.
+  fills account, partitions and cores from the scheduler (built 2026-10-04).
 - **Environment mismatch.** Local stages use `sys.executable`; Slurm jobs
   activate the profile's `conda_env` (dry run only, see B1). They should be
   the same interpreter. Record `sys.executable` in the profile at setup and
@@ -231,9 +231,9 @@ Ranked by consequence.
 
 ## 3. Quality-of-life improvements
 
-- `chimes-agent study --status` could print a one-screen dashboard: phases,
-  what is done, what is waiting on the user, running jobs and CPU-hours so
-  far.
+- `chimes-agent study --study DIR --status` prints a one-screen dashboard:
+  phases, what is done, what is waiting on the user, running jobs and
+  CPU-hours so far (built 2026-10-04).
 - A `chimes-agent explain <artifact.json>` command that turns any stage
   output into three plain-language lines (useful to non-agent users too).
 - Consistent units in every JSON (`*_kcal_mol_ang` suffixes everywhere;
@@ -274,7 +274,7 @@ Ordered by value per effort for a new user.
    - B9: shared-filesystem check;
    - B5: history rewrite (owner's decision).
 2. **Portability (about a week):**
-   - profile templates + `setup --init-profile`, and custom profile paths
+   - profile templates + a `setup` profile-init helper, and custom profile paths
      (B6);
    - `chimes-agent doctor`;
    - one interpreter everywhere;

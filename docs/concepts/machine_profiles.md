@@ -68,9 +68,13 @@ qe:
 
 ## Adding a new machine
 
-1. Copy `dane.yaml` (Slurm) or `stampede3.yaml` (TACC-style) anywhere.
-2. Fill in the required keys; use `${CHIMES_ACCOUNT}` rather than a literal
-   account if others will use the file.
+1. Let the toolkit write it:
+   `chimes-agent setup --init-profile ./my_cluster.yaml --scratch <shared dir> --modules <compiler>,<mpi>`.
+   It reads partitions, cores per node and your accounts from the scheduler
+   and lists what it could not determine under `todo`. (Or copy `dane.yaml`
+   or `stampede3.yaml` by hand.)
+2. Check the required keys; the account is `${CHIMES_ACCOUNT:-…}` so the
+   file can be shared.
 3. Pass the path: `chimes-agent setup --machine ./my_cluster.yaml`, then
    `--machine ./my_cluster.yaml` on any submitting stage.
 4. To use a short name, add the file under

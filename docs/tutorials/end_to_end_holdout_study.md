@@ -8,10 +8,6 @@ whole thing in one call with cutoffs/λ/order chosen automatically from
 your data, see [`auto-build`](../commands/auto-build.md) instead — this
 tutorial is for when you want to drive (or understand) each step yourself.
 
-Every stage described here (and in the CLI generally) is implemented,
-including [`al-select`](../commands/al-select.md) (standalone diversity
-selection outside a full AL cycle).
-
 Assumes `chimes-agent setup --machine dane --component all` has already
 been run (or at least `chimes_lsq` + `chimes_calculator`).
 
@@ -109,11 +105,15 @@ inside an actual MD integrator, not just single-point.
 
 ## 8. Iterate
 
-Adjust cutoffs/order in step 3, or λ in step 5, based on what step 6 shows
-— this is the human/agent judgment loop this repo is designed to make fast
-to iterate, not to automate away. `chimes-agent sweep` (`docs/commands/sweep.md`)
-automates running a whole grid of step 3–6 combinations and reports a
-comparison table, but the choice of which point in that table to ship
-stays yours — unless you use [`auto-build`](../commands/auto-build.md),
-which runs steps 1–6 in one call and does pick a winner (lowest holdout
-force RMSE), still reporting the full table alongside its choice.
+Adjust cutoffs, λ or orders in step 3, or α and the solver in step 5, based
+on what step 6 shows — this is the human/agent judgment loop this repo is
+designed to make fast to iterate, not to automate away. `chimes-agent sweep`
+(`docs/commands/sweep.md`) runs a grid of step 3–6 combinations and reports a
+comparison table; [`hyper-search`](../commands/hyper-search.md) runs the
+staged, noise-aware search (cross-validation with `--cv-folds`, cutoffs
+from the data, exclusions, smoothing, α) and writes `HYPER_REPORT.md`. The
+choice of which point to ship stays yours — unless you use
+[`auto-build`](../commands/auto-build.md), which picks the lowest holdout
+force RMSE and still reports the full table. Then `md-check`, `eos-check`
+and `fingerprint` ([MD validation](../commands/md-check.md)) say whether
+the model holds up in dynamics and where it leaves its training data.

@@ -36,7 +36,7 @@ flags rather than duplicating them, so they don't go stale:
 
 | Skill | Triggers on |
 |---|---|
-| `chimes-study` | an end-to-end goal ("I need a potential for X"): orchestrates the five study phases, layout, handoffs, approvals |
+| `chimes-study` | an end-to-end goal ("I need a potential for X"): orchestrates the eight study phases, layout, handoffs, approvals |
 | `chimes-data-curation` | finding, fetching, generating and curating training data (the data agent's playbook) |
 | `chimes-hyperparameter-search` | choosing cutoffs, Morse lambdas and 2/3/4-body orders (the tuner agent's playbook) |
 | `chimes-benchmarking` | CPU-hours used, strong/weak scaling, sizing compute requests (the benchmark agent's playbook) |
@@ -44,7 +44,7 @@ flags rather than duplicating them, so they don't go stale:
 | `chimes-auto-build` | "build me a model from these configs", one-shot pipeline, QE labeling then fit |
 | `chimes-build-model` | hands-on fitting, choosing cutoffs/orders, sweeps, diagnosing a bad fit |
 | `chimes-hpc-jobs` | anything touching Slurm, QE, DLARS, lustre quota, or a job that seems stuck |
-| `chimes-active-learning` | `al-select`, `al-run`, "improve/stabilize the model with more data" |
+| `chimes-active-learning` | `al-batch`, `al-status`, `al-select`, `al-run`, "improve/stabilize the model with more data" |
 | `chimes-md-validation` | "is this model stable in MD", choosing between tied models, fingerprint coverage (the MD validator's playbook) |
 | `chimes-literature` | published ChIMES practice (cutoffs, λ, smoothing, orders, weights, AL, validation, accuracy) with citations; consulted by every agent |
 
@@ -67,9 +67,9 @@ flags rather than duplicating them, so they don't go stale:
 - `chimes-md-validator` — MD validation: `md-check` of the chosen and tied
   models (stability, close contacts, RDF vs DFT), fingerprint coverage, and
   a verdict: use a model, choose between models, or needs active learning.
-- `chimes-active-learner` — active-learning rounds (harvest, fingerprint
-  novelty, QE labeling for approval, `al-merge`, refit with n/I weight decay,
-  re-validation) with an explicit stopping rule.
+- `chimes-active-learner` — active-learning rounds (`md-check` harvest,
+  `al-batch` selection, QE labeling for approval, `al-merge`, refit with n/I
+  weight decay, re-validation, `al-status`) with an explicit stopping rule.
 - `chimes-job-monitor` — read-only, runs on the small fast model. Claude
   hands it a job id or directory and gets back a ten-line status instead of
   raw `squeue`/`sacct`/log output. This is the right place for "wait and

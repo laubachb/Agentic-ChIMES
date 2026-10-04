@@ -49,3 +49,6 @@ contract every page below assumes.
 | [`committee`](committee.md) | **implemented** | Bootstrap committee of one basis; candidates ranked by model disagreement |
 
 All stages are implemented.
+
+Every option of every stage, with types and defaults, is in
+[All options](options.md) (generated from the code).

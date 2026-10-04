@@ -213,3 +213,47 @@ def test_lammps_triclinic_single_point_matches_published_reference(tmp_path):
     assert result["energy_kcal_mol"] == pytest.approx(EXPECTED_ENERGY, abs=1e-3)
     f0 = np.asarray(result["forces_kcal_mol_ang"][0]) @ q      # back from the test's own rotation
     assert f0 == pytest.approx(EXPECTED_FORCE_ATOM0, abs=1e-2)
+
+
+def test_thermo_last_row_of_an_md_log():
+    log = "junk\nStep Temp PotEng TotEng Press\n0 300 -10.0 -9.0 1.0\n100 310.5 -11.0 -9.5 2.0\nLoop time of 1.0\n"
+    assert lammps_run._parse_thermo_last(log) == {"Step": 100.0, "Temp": 310.5, "PotEng": -11.0, "TotEng": -9.5, "Press": 2.0}
+    assert lammps_run._parse_thermo_last("no table here") is None
+
+
+def test_machine_dry_run_renders_a_job_that_reruns_the_stage(tmp_path, monkeypatch):
+    import numpy as np
+    from agentic_chimes.io import xyzf as xyzf_io
+
+    import json
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("CHIMES_AGENT_ALLOW_LOCAL_JOB_DIRS", "1")
+    monkeypatch.setenv("CHIMES_ACCOUNT", "bank1")
+    monkeypatch.setenv("CHIMES_CORES_PER_NODE", "16")
+    params = tmp_path / "params.txt"
+    params.write_text("ATOM TYPES: 1\n\n# TYPEIDX #\t# ATM_TYP #\t# ATMCHRG #\t# ATMMASS #\n0\tCu\t0\t63.546\n\n"
+                      "ATOM PAIRS: 1\n\n# PAIRIDX #\t# ATM_TY1 #\t# ATM_TY1 #\t# S_MINIM #\t# S_MAXIM #\t# CHBDIST #\t# MORSE_LAMBDA #\n"
+                      "0\tCu\tCu\t1.0\t5.0\tMORSE\t2.5\n")
+    rng = np.random.default_rng(0)
+    n = 1000
+    frame = xyzf_io.Frame(symbols=["Cu"] * n, positions=rng.uniform(0, 25, (n, 3)).tolist(), forces=[[0, 0, 0]] * n, box=[25.0] * 3)
+    xyzf_io.write_xyzf([frame], tmp_path / "s.xyzf")
+    fake_lmp = tmp_path / "lmp"
+    fake_lmp.write_text("")
+    out = tmp_path / "job"
+    args = SimpleNamespace(params=str(params), structure_xyzf=str(tmp_path / "s.xyzf"), frame_index=0, elements=None, masses=None,
+                           mode="md", temperature=300.0, nsteps=100, timestep=1.0, md_seed=1, lammps_bin=str(fake_lmp), nprocs=1,
+                           replicate=False, machine="generic", queue="debug", walltime_hours=0.5, nodes=1, ntasks_per_node=None,
+                           dry_run=True, output_dir=str(out))
+    r = lammps_run.run(args)
+    assert r["dry_run"] and not r["submitted"] and r["mpi_ranks"] == 4          # 1000 atoms / 250 per rank
+    script = (out / "run.cmd").read_text()
+    assert "--ntasks-per-node 4" in script and "-A bank1" in script and "lammps-run --json-in" in script
+    payload = json.loads((out / "lammps_run_input.json").read_text())
+    assert payload["nprocs"] == 4 and payload["mode"] == "md" and "machine" not in payload
+    assert not (out / "job.json").exists()                                     # a dry run records no submission
+    # a wrong mass is refused before anything is rendered
+    args.masses, args.output_dir = {"Cu": 1.0}, str(tmp_path / "job2")
+    with pytest.raises(ValueError):
+        lammps_run.run(args)

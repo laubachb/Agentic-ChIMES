@@ -1,7 +1,8 @@
 """Single-point/MD via the ChIMES-patched `lmp_mpi_chimes` build (`chimes-agent
-setup --component lammps`). Local execution only in this phase (matches
-amat-build/solve's current scope) -- HPC submission for long MD runs is
-future work.
+setup --component lammps`). Runs locally, or with `--machine` as one Slurm
+job that re-invokes this stage on the compute node (the inputs are written
+and checked here first, so a bad structure or mass fails before anything is
+submitted); the job's result lands in `run/lammps_run.json`.
 
 Single-point mode (`run 0`) is the documented independent cross-check
 against the ctypes evaluator (stages/evaluate.py): both read the same
@@ -26,8 +27,10 @@ io/lammps_data.py's docstring.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +39,8 @@ from ..io import lammps_data, xyzf as xyzf_io
 from ..io import fs
 
 NAME = "lammps-run"
-SUMMARY = "Single-point/MD via lmp_mpi_chimes (local execution)."
+SUPPORTS_DRY_RUN = True
+SUMMARY = "Single-point/MD via lmp_mpi_chimes: local, or one Slurm job with --machine."
 SCHEMA = {
     "type": "object",
     "required": ["params", "structure_xyzf"],
@@ -54,6 +58,11 @@ SCHEMA = {
         "lammps_bin": {"type": ["string", "null"]},
         "nprocs": {"type": "integer", "default": 1},
         "replicate": {"type": "boolean", "default": True, "description": "Replicate cells thinner than 2x the outer cutoff (LAMMPS energies are wrong on them)."},
+        "machine": {"type": ["string", "null"], "description": "Submit as one Slurm job on this machine profile instead of running here."},
+        "queue": {"type": "string", "default": "debug"},
+        "walltime_hours": {"type": "number", "default": 1.0},
+        "nodes": {"type": "integer", "default": 1},
+        "ntasks_per_node": {"type": ["integer", "null"], "description": "MPI ranks per node for the job. Default: sized to the system (~250 atoms per rank), at most the profile's node."},
     },
 }
 
@@ -72,6 +81,11 @@ def add_arguments(parser) -> None:
     parser.add_argument("--lammps-bin", dest="lammps_bin", default=None)
     parser.add_argument("--nprocs", type=int, default=1)
     parser.add_argument("--no-replicate", dest="replicate", action="store_false", default=True)
+    parser.add_argument("--machine", default=None)
+    parser.add_argument("--queue", default="debug")
+    parser.add_argument("--walltime-hours", dest="walltime_hours", type=float, default=1.0)
+    parser.add_argument("--nodes", type=int, default=1)
+    parser.add_argument("--ntasks-per-node", dest="ntasks_per_node", type=int, default=None)
 
 
 def _render_input(mode: str, data_file: str, params_file: str, *, temperature=300.0, nsteps=1000, timestep=1.0, md_seed=12345) -> str:
@@ -161,6 +175,65 @@ def replicate_for_cutoff(frame, params_path):
     return big, ncopies
 
 
+ATOMS_PER_RANK = 250      # below this, more MPI ranks cost more than they return (benchmark, Cu-Zr)
+
+
+def _parse_thermo_last(log_text: str) -> Optional[dict]:
+    """The last row of the last thermo table (MD mode: step temp pe etotal press)."""
+    lines = log_text.splitlines()
+    header, last = None, None
+    for i, ln in enumerate(lines):
+        toks = ln.split()
+        if toks and toks[0] == "Step" and len(toks) > 2:
+            header = toks
+            for data_ln in lines[i + 1:]:
+                d = data_ln.split()
+                if len(d) != len(header) or not re.match(r"^-?\d", d[0]):
+                    break
+                last = d
+    if not header or not last:
+        return None
+    try:
+        return {h: float(v) for h, v in zip(header, last)}
+    except ValueError:
+        return None
+
+
+def _submit(args, out: Path, natoms: int) -> dict:
+    """One Slurm job that re-runs this stage on the compute node with the same inputs."""
+    from .. import hpc, machines
+    from ..io import atomic
+
+    profile = machines.load_profile(args.machine)
+    nodes = max(1, int(getattr(args, "nodes", 1) or 1))
+    per_node = getattr(args, "ntasks_per_node", None)
+    if not per_node:
+        want = max(1, int(getattr(args, "nprocs", 1) or 1), natoms // ATOMS_PER_RANK)
+        per_node = min(profile.default_ntasks_per_node or want, max(1, -(-want // nodes)))
+    nprocs = nodes * per_node
+    payload = {k: v for k, v in vars(args).items()
+               if not k.startswith("_") and k not in ("machine", "json_in", "json_out", "describe", "force", "dry_run",
+                                                      "output_dir", "stage", "queue", "walltime_hours", "nodes",
+                                                      "ntasks_per_node")}
+    for k in ("params", "structure_xyzf", "lammps_bin"):
+        if payload.get(k):
+            payload[k] = str(Path(payload[k]).resolve())
+    payload["nprocs"] = nprocs
+    inp = out / "lammps_run_input.json"
+    atomic.write_json(inp, payload, indent=1, default=str)
+    run_dir = out / "run"
+    result_json = run_dir / "lammps_run.json"
+    cmd = (f"{sys.executable} -m agentic_chimes.cli lammps-run --json-in {inp} --output-dir {run_dir} --force "
+           f"--json-out {result_json} > lammps_run.out 2>&1")
+    handle = hpc.submit_job(profile, job_name="lammps-run", commands=[f"cd {out.resolve()}", cmd], work_dir=out, nodes=nodes,
+                            ntasks_per_node=per_node, walltime_hours=getattr(args, "walltime_hours", 1.0) or 1.0,
+                            queue=getattr(args, "queue", "debug") or "debug", dry_run=bool(getattr(args, "dry_run", False)),
+                            expect=[result_json])
+    return {"submitted": not handle.dry_run, "dry_run": handle.dry_run, "job_id": handle.job_id, "job_file": str(handle.job_file),
+            "natoms_simulated": natoms, "mpi_ranks": nprocs, "nodes": nodes, "results_when_done": str(result_json),
+            "check_with": f"chimes-agent job-status --work-dir {out}"}
+
+
 def run(args) -> dict:
     for req in ("params", "structure_xyzf"):
         if not getattr(args, req, None):
@@ -180,6 +253,14 @@ def run(args) -> dict:
 
     work_dir = Path(getattr(args, "output_dir", None) or ".")
     fs.ensure_dir(work_dir)
+
+    if getattr(args, "machine", None):
+        # fail here, not on the node: types, masses and elements are checked before anything is submitted
+        from ..io import params as params_io
+
+        params_io.resolve_types(params_path, getattr(args, "elements", None), getattr(args, "masses", None))
+        params_io.frame_elements_check(params_path, frame.symbols)
+        return _submit(args, work_dir.resolve(), frame.natoms)
 
     data_path = work_dir / "structure.data"
     from ..io import params as params_io
@@ -205,10 +286,11 @@ def run(args) -> dict:
     nprocs = getattr(args, "nprocs", 1) or 1
     cmd = [str(lammps_bin), "-in", in_path.name, "-log", log_path.name]
     if nprocs > 1:
-        cmd = ["mpirun", "-n", str(nprocs)] + cmd
+        # inside a Slurm allocation the scheduler's launcher places the ranks; mpirun only outside one
+        launcher = ["srun", "-n", str(nprocs)] if os.environ.get("SLURM_JOB_ID") else ["mpirun", "-n", str(nprocs)]
+        cmd = launcher + cmd
 
     from ..hpc.local import no_core_dumps, singleton_env
-
 
     no_core_dumps()
 
@@ -236,8 +318,14 @@ def run(args) -> dict:
             result["forces_kcal_mol_ang"] = forces[:original_natoms]
 
     if log_path.is_file():
-        pe = _parse_log_pe(log_path.read_text())
+        log_text = log_path.read_text()
+        pe = _parse_log_pe(log_text)
         if pe is not None:
             result["energy_kcal_mol"] = pe / ncopies
+        if mode == "md":
+            thermo = _parse_thermo_last(log_text)
+            if thermo:
+                result["thermo_last"] = thermo
+        result["mpi_ranks"] = nprocs
 
     return result

@@ -140,7 +140,7 @@ A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
 | Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `learning-curve`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate` |
 | Active learning | `al-batch`, `al-select`, `al-merge`, `al-status`, `al-run` |
 | MD, performance, deployment | `lammps-run`, `md-check`, `eos-check`, `committee`, `benchmark`, `deploy` |
-| Infrastructure | `setup`, `doctor`, `submit` |
+| Infrastructure | `setup`, `doctor`, `submit`, `job-status` |
 
 Reference for each: [docs/commands/](docs/commands/index.md).
 

@@ -36,11 +36,11 @@ left for a caller to remember:
   (~1.05M soft), not space; writing one file per frame/config at scale
   exhausts it long before disk space runs out. Any stage that could
   plausibly write per-frame output at scale (dataset selection, QE
-  relabeling output, AL candidate sets) is designed to default to packed
-  `.npz`/JSON-array output (`io/packed_frames.py`, planned) rather than
-  one-file-per-frame, and to support archiving genuinely bulk raw output
-  to `/p/lustre3` (space-rich, not file-count-limited) via a
-  `bulk_archive_root` on the machine profile.
+  relabeling output, AL candidate sets, fingerprints) writes one packed
+  `.xyzf`, `.npz` or JSON array rather than one file per frame; QE
+  relabeling is the exception (one work directory per frame, which
+  `--collect` packs and which should then be deleted or archived to
+  `/p/lustre3`, the space-rich, file-count-unlimited filesystem).
 - **DLARS cliff finalize margin** — `stages/_cliff_monitor.py` subtracts a
   small margin (default 3 iterations) from the iteration at first
   detected Cholesky failure before finalizing, reproducing the

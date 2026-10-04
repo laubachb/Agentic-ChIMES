@@ -66,6 +66,7 @@ nav:
       - "Worked example: Cu-Zr": guide/example_cuzr.md
   - Commands:
       - commands/index.md
+      - All options: commands/options.md
       - Study:
           - study: commands/study.md
           - usage: commands/usage.md

@@ -87,5 +87,29 @@ def ensure_repo(name: str, *, codes_dir: Path, force: bool = False, ref: Optiona
     return {"path": str(repo_dir), "ref": target_ref, "status": status}
 
 
-def ensure_all(*, codes_dir: Path, force: bool = False) -> dict:
-    return {name: ensure_repo(name, codes_dir=codes_dir, force=force) for name in REPOS}
+def parse_refs(entries) -> dict:
+    """['chimes_lsq-LLfork=<commit>', ...] -> {repo: ref}. The '-LLfork' suffix may be omitted."""
+    refs = {}
+    for entry in entries or []:
+        name, sep, ref = str(entry).partition("=")
+        name = name.strip()
+        if name not in REPOS and f"{name}-LLfork" in REPOS:
+            name = f"{name}-LLfork"
+        if not sep or not ref.strip() or name not in REPOS:
+            raise ValueError(f"--ref takes REPO=COMMIT with REPO one of {sorted(REPOS)}; got {entry!r}")
+        refs[name] = ref.strip()
+    return refs
+
+
+def ensure_all(*, codes_dir: Path, force: bool = False, refs: Optional[dict] = None) -> dict:
+    """Clone every fork at its pin. `refs` {repo: ref} overrides a pin for this call; an
+    overridden repo is fetched and checked out even when already present."""
+    refs = refs or {}
+    out = {}
+    for name in REPOS:
+        res = ensure_repo(name, codes_dir=codes_dir, force=force or name in refs, ref=refs.get(name))
+        if name in refs:
+            res["pinned_ref"] = REPOS[name]["ref"]
+            res["override"] = True
+        out[name] = res
+    return out

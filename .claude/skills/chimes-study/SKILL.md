@@ -20,9 +20,10 @@ directory so login-node CPU time is recorded automatically.
 ```
 <study>/study.json  STUDY.md         goal, decisions log, phase status (you keep STUDY.md)
   01_data/     DATA_PLAN.md, fetch_*/ generate/ qe_*/ curate/data_manifest.json
-  02_fit/      search/hyper_report.json, search/best/{params.txt,hyper_choice.json}, HYPER_REPORT.md
-  03_al/       al_driver study / al-select rounds
-  04_md/       lammps-run validation runs
+  02_fit/      search/{hyper_report.json,HYPER_REPORT.md}, search/best/{params.txt,hyper_choice.json},
+               learning_curve/, HYPER_REPORT.md (tuner)
+  03_al/       round<k>/{batch,qe,merge,fit,md,quests}/, AL_STATUS.md (al-status), AL_LOG.md
+  04_md/       check/ (md-check), eos/, fingerprint/, quests/, committee/, MD_REPORT.md
   05_bench/    benchmark.json, BENCHMARK.md
   06_deploy/   params.txt, in.lammps.example, MODEL_CARD.md
   usage/       usage_report.json, local.jsonl (CPU-hour ledger)
@@ -37,8 +38,8 @@ directory so login-node CPU time is recorded automatically.
 | 2 | Data selection and curation | **`chimes-data-curator`** | `01_data/curate/data_manifest.json` |
 | 3 | Hyperparameter search (cutoffs, λ, orders, 4-body, exclusions) | **`chimes-hyperparameter-tuner`** | `02_fit/search/best/` + `HYPER_REPORT.md` |
 | 4 | Build/check the model (default weighting) | you + `chimes-fit-reviewer` | final `params.txt` registered |
-| 5 | Active learning | **`chimes-active-learner`** | stabilized model, `03_al/AL_LOG.md` |
-| 6 | MD validation | **`chimes-md-validator`** | `04_md/MD_REPORT.md`, runs registered as `md_runs` |
+| 5 | Active learning | **`chimes-active-learner`** | stabilized model, `03_al/AL_STATUS.md` (al-status verdict) + `AL_LOG.md` |
+| 6 | MD validation | **`chimes-md-validator`** | `04_md/MD_REPORT.md`; `md_check`, `eos_check`, `fingerprint`, `quests` registered |
 | 7 | Benchmark + compute accounting | **`chimes-benchmark`** | `05_bench/benchmark.json`, `usage/usage_report.json` |
 | 8 | Deploy + final report | `deploy`, then **`chimes-report-writer`** | `06_deploy/MODEL_CARD.md`, `REPORT.md` |
 
@@ -96,10 +97,10 @@ waiting to `chimes-job-monitor`, then resume the tuner to interpret
 Read `data_manifest.json`: `train_xyzf`/`holdout_xyzf`, `level_of_theory`,
 `pairs.*.min_distance` (inner cutoffs sit just below these),
 `fit_hints.nlayers_required` (`N_LAYERS` for the outer cutoff you choose),
-`fit_hints.fitener`. Weighting: use the default (uniform) weights until
-custom schemes exist, or pick a published preset
-(`--weights-preset hierarchical2026` etc., `weights` stage); record the choice
-in `STUDY.md`. Active-learning frames decay as n/I (`weights --decay-cycles`).
+`fit_hints.fitener`. Weighting: uniform by default, or a published preset
+(`--weights-preset hierarchical2026` etc.; the `weights` stage builds custom
+schemes); `hyper-search --stress-weights` measures the stress weight when
+stresses are fitted. Record the choice in `STUDY.md`. Active-learning frames decay as n/I (`weights --decay-cycles`).
 For a model that will go through active learning, ask the tuner for
 `--prefer richer` (see `chimes-literature`). Note `auto-build` requires
 orthorhombic frames; with triclinic data use the stage-by-stage route.
@@ -126,8 +127,10 @@ Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 
 - MD: `md-check` in `04_md/check/` on the final model (and tied
   runners-up) at the conditions the user cares about, with a DFT reference
-  if one exists. For longer production-like runs, use `lammps-run` or
-  LAMMPS directly. Register each run (`--register md_runs=<dir>`). Unstable
+  if one exists; `eos-check`, `fingerprint` and `quests` beside it. For
+  longer production-like runs, use `lammps-run` or LAMMPS directly. Register
+  the directories (`--register md_check=… eos_check=… fingerprint=…
+  quests=… evaluate=…`) so the report fills. Unstable
   runs and close contacts are the signal for active learning, and
   `harvest.xyzf` is the next batch to label.
 - Delegate to `chimes-benchmark` with the user's intended production runs.
@@ -138,5 +141,8 @@ Before recommending a model, get `chimes-fit-reviewer`'s verdict.
 
 ## Always
 
+- When resuming, or when the user asks where things stand:
+  `chimes-agent study --study <dir> --status` (phases, jobs, what waits on
+  the user, CPU-hours; also `STATUS.md`).
 - HPC submissions only after the user approves (dry-run first).
 - Keep `STUDY.md` current: decisions, paths, numbers, open gaps.

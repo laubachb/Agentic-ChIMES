@@ -66,7 +66,9 @@ only fits the new points.
 Everything lives in the study directory: `study.json` (registry),
 `STUDY.md` (decisions), and each phase's outputs. Ask Claude to "resume the
 study in /p/lustre2/me/studies/cuzr". It reads the registry, reports which
-phases are complete (`chimes-agent study --study DIR`), and continues.
+phases are complete, which jobs are running and what is waiting on you
+(`chimes-agent study --study DIR --status`, also written to `STATUS.md`),
+and continues.
 
 ## Reading the results
 

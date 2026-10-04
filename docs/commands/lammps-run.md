@@ -1,7 +1,6 @@
 # `chimes-agent lammps-run`
 
-**Status: implemented (local execution only; HPC submission for long MD
-runs is future work).**
+**Status: implemented.** Runs locally, or as one Slurm job with `--machine`.
 
 Single-point or MD evaluation via the ChIMES-patched `lmp_mpi_chimes`
 build (`chimes-agent setup --component lammps`). See
@@ -30,6 +29,28 @@ wrapper, and the standalone `chimescalc` binary all agree to ~1e-3.
   `evaluate` to 1e-4 kcal/mol. The result reports `n_copies` and
   `natoms_simulated`. Single-point energy is per original cell (÷ copies),
   and forces are the first copy's. MD runs on the supercell.
+
+## On a cluster (`--machine`)
+
+```bash
+chimes-agent lammps-run --params model/params.txt --structure-xyzf big.xyzf \
+  --mode md --temperature 1200 --nsteps 200000 \
+  --machine dane --queue batch --walltime-hours 4 --output-dir 04_md/prod_1200K [--dry-run]
+chimes-agent job-status --work-dir 04_md/prod_1200K        # QUEUED / RUNNING / SUCCEEDED / FAILED (why)
+```
+
+The structure, element types and masses are checked on the login node, so
+a mismatch fails before anything is submitted. The job then re-runs this
+stage on the compute node (`srun -n <ranks>` inside the allocation) and
+writes the same result JSON to `run/lammps_run.json`, with `thermo_last`
+(the final thermo row) for MD. Ranks default to about one per 250 atoms,
+at most one node of the profile; set `--nodes` / `--ntasks-per-node` to
+override. `--dry-run` renders `run.cmd` without submitting. On Dane, a
+432-atom Cu-Zr cell gave identical thermo output on 1 and 4 ranks.
+
+For validating candidate models at several temperatures, with stability
+and close-contact analysis, use [`md-check`](md-check.md) instead; this
+stage is the plain run.
 
 ## Usage
 
