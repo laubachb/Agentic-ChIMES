@@ -127,9 +127,10 @@ def _settings_key(settings: dict) -> str:
 
 
 def _render_pw_in(frame, elements, masses, pseudopotentials, *, ecutwfc, ecutrho, kpoints, smearing, degauss, conv_thr) -> str:
-    if frame.non_ortho:
-        raise ValueError("qe-relabel only supports orthorhombic cells for now")
-    lx, ly, lz = frame.box
+    import numpy as np
+
+    # ibrav = 0 with CELL_PARAMETERS takes any cell: triclinic frames (most open-database cells) included
+    cell = np.asarray(frame.box if frame.non_ortho else np.diag(frame.box), dtype=float)
 
     lines = [
         "&CONTROL",
@@ -166,9 +167,7 @@ def _render_pw_in(frame, elements, masses, pseudopotentials, *, ecutwfc, ecutrho
 
     lines += [
         "CELL_PARAMETERS angstrom",
-        f"  {lx} 0.0 0.0",
-        f"  0.0 {ly} 0.0",
-        f"  0.0 0.0 {lz}",
+        *(f"  {row[0]:.10f} {row[1]:.10f} {row[2]:.10f}" for row in cell),
         "K_POINTS automatic",
         f"  {kpoints[0]} {kpoints[1]} {kpoints[2]} 0 0 0",
     ]

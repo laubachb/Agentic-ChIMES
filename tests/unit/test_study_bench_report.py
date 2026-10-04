@@ -146,3 +146,35 @@ def test_deploy_and_study_report(tmp_path):
     assert facts["data"]["removed_by_reason"] == {"low_density": 1, "duplicate_of": 1}
     assert "| Cu Cu Zr | 5 | 33 | -0.001 | yes |" in text
     assert "no active-learning run" in text
+
+
+def test_report_renders_validation_sections_from_facts():
+    from agentic_chimes.stages.study_report import render
+
+    facts = {
+        "study": {"name": "t", "goal": "g", "elements": ["Cu"]}, "generated_at": "now", "deploy": None,
+        "data": {"summary": {}, "level_of_theory": ["DFT"], "n_train": 10, "removed_by_reason": {}, "sources": [], "pairs": {}},
+        "fit": {"stages": [], "profiles": {"order_2b": [{"value": 6, "chosen": True, "holdout_relative_force_error": 0.3},
+                                                        {"value": 8, "chosen": False, "holdout_relative_force_error": 0.31}]},
+                "cross_validation": {"folds": 4, "n_frames": 100, "ext_holdout_relative_force_error": 0.3}, "notes": []},
+        "model": {"accuracy": {"holdout_relative_force_error": 0.3, "holdout_relative_force_se": 0.03, "n_params": 5,
+                               "by_composition": {"Cu": 0.3}}, "hyperparameters": {}},
+        "deployed": {"nonzero_coefficients": {"2b": 4}, "penalty": {"dist": 0.02, "scaling": 1e5}},
+        "validation": {"learning_curve": {"verdict": "plateau", "notes": ["flat"], "curve": [{"n_frames": 5, "relative_force_error": 0.4, "rmse_energy_per_atom": 1.0}]},
+                       "md_check": {"structure_natoms": 100, "nsteps": 10, "timestep_fs": 1.0,
+                                    "runs": [{"params": "/x/m/params.txt", "temperature": 300.0, "stable": True, "equilibrated": True,
+                                              "mean_temperature_second_half": 299.0, "below_inner_cutoff_frames": 0, "close_contact_fraction": 0.0, "rdf_distance": None}],
+                                    "models": [{"params": "/x/m/params.txt", "penalty": {"dist": 0.02, "scaling": 1e5}}]},
+                       "eos_check": {"composition": "Cu", "eos": {"V0_A3_per_atom": 12.0, "B0_GPa": 140.0, "B0_prime": 5.0},
+                                     "elastic": {"bulk_modulus_voigt_GPa": 141.0, "born_stable": True, "cubic": {"C11": 1, "C12": 2, "C44": 3}}},
+                       "quests": {"entropy": 5.0, "diversity": 5.0, "n_candidate_frames": 10, "fraction_novel_frames": 0.5, "entropy_gain_if_all_added": 0.1, "entropy_saturated": False},
+                       "fingerprint": {"sets": {"D2": 10.0, "critical": 5.0, "distinguishable": True}, "novelty": {"fraction_novel": 0.9}},
+                       "committee": {"n_models": 4, "force_spread_kcal_mol_ang": {"median": 0.4, "max": 7.0}}},
+        "al_status": {"verdict": "CONTINUE", "reasons": ["novel"], "rounds": [{"round": 1, "n_train": 12, "n_added": 2, "holdout_relative_force_error": 0.29}]},
+        "figures": [{"section": "evaluate", "path": "/s/eval/parity_forces.png", "rel": "eval/parity_forces.png"}],
+        "md_runs": [], "benchmark": None, "usage": None, "gaps": [], "texts": {},
+    }
+    text = render(facts)
+    for needle in ("4-fold cross-validation", "Sensitivity", "Data sufficiency", "al-status", "Coverage and uncertainty",
+                   "Equation of state", "`md-check`", "![evaluate: parity_forces](eval/parity_forces.png)", "deployed coefficients"):
+        assert needle in text, needle

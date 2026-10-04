@@ -69,6 +69,14 @@ For picking cutoffs/λ *and* the order grid automatically from your
 training data in one call, see [`auto-build`](auto-build.md) — it's
 `sweep` plus the data-driven parameter derivation and a final pick.
 
+## Noise and groups
+
+Each point reports `relative_force_error_se` (bootstrap over holdout frames)
+and `by_composition`. `tied_with_best` lists the points within one SE of the
+best, which are indistinguishable on this holdout. Prefer the simplest of
+them, or use `hyper-search`, which applies paired statistics and a
+per-composition guard.
+
 ## Output
 
 ```json

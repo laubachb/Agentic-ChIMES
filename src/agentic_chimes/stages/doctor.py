@@ -210,7 +210,10 @@ def run(args) -> dict:
         checks.append(_component(comp, fix, optional=opt))
     checks.append(_check("al_driver", "ok" if config.AL_DRIVER_SRC.is_dir() else "fail", str(config.AL_DRIVER_SRC),
                          "chimes-agent setup --component codes"))
-    for mod, why in (("ase", "structures, RDFs, md-check"), ("pyarrow", "open-data fetch"), ("sklearn", "local solvers")):
+    for mod, why in (("ase", "structures, RDFs, md-check"), ("pyarrow", "open-data fetch"), ("sklearn", "local solvers"),
+                     ("matplotlib", "plots in evaluate/md-check/eos-check/learning-curve (pip install -e '.[plots]')"),
+                     ("quests", "QUESTS entropy/novelty/selection (pip install -e '.[quests]')"),
+                     ("scipy", "chi-squared critical values for fingerprint tests")):
         try:
             __import__(mod)
             checks.append(_check(f"python: {mod}", "ok", why))

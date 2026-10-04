@@ -90,3 +90,41 @@ def test_emt_copper_study(tmp_path):
                                           max_clusters=2000, alpha=0.1, workers=1, machine=None,
                                           output_dir=str(tmp_path / "fp")))
     assert "novelty" in fpr
+
+    # the rest of the toolchain on the same tiny study: learning curve, committee, EOS, batch, status, deploy, report
+    from agentic_chimes.stages import (al_batch, al_status, committee, deploy, eos_check, learning_curve, study,
+                                       study_report)
+
+    fm = search["fm_setup_in"]
+    lc = learning_curve.run(SimpleNamespace(fm_setup_in=fm, holdout_xyzf=manifest["holdout_xyzf"], fractions=[0.5, 1.0],
+                                            repeats=1, algorithm="lassolars", alpha=1e-5, weights_preset=None,
+                                            stress_weight=None, seed=0, plot=True, output_dir=str(tmp_path / "lc")))
+    assert lc["verdict"] in ("data-limited", "plateau", "undetermined") and len(lc["curve"]) == 2
+    cm = committee.run(SimpleNamespace(fm_setup_in=fm, algorithm="lassolars", alpha=1e-5, n_models=3, seed=0,
+                                       candidates_xyzf=manifest["holdout_xyzf"], n_select=3, output_dir=str(tmp_path / "cm")))
+    assert cm["n_models"] == 3 and Path(cm["uncertain_xyzf"]).is_file()
+    eos = eos_check.run(SimpleNamespace(params=params, structure_xyzf=None, frame_index=0,
+                                        prototype={"name": "Cu", "crystalstructure": "fcc", "a": 3.61}, volume_range=0.06,
+                                        n_points=7, strain=0.005, reference_xyzf=manifest["holdout_xyzf"], plot=True,
+                                        output_dir=str(tmp_path / "eos")))
+    assert eos["eos"]["B0_GPa"] > 0 and eos["elastic"]["born_stable"]
+    batch = al_batch.run(SimpleNamespace(candidates_xyzf=md["harvest_xyzf"] or manifest["holdout_xyzf"],
+                                         train_xyzf=manifest["train_xyzf"], params=params, fm_setup_in=None, budget=5,
+                                         min_close=2, close_margin=0.1, signals=["quests", "fingerprint"], n_models=3,
+                                         algorithm="lassolars", alpha=1e-5, seed=0, output_dir=str(tmp_path / "batch")))
+    assert batch["n_selected"] <= 5 and Path(batch["batch_xyzf"]).is_file()
+
+    root = tmp_path / "study"
+    study.run(SimpleNamespace(init=str(root), study=None, name="emt-cu", goal="integration test", elements=["Cu"],
+                              register=None, extra_roots=None))
+    regs = [f"data_manifest={cur['data_manifest']}", f"hyper_report={search['hyper_report']}", f"params={params}",
+            f"fm_setup={fm}", f"md_check={tmp_path / 'md'}", f"eos_check={tmp_path / 'eos'}", f"fingerprint={tmp_path / 'fp'}",
+            f"committee={tmp_path / 'cm'}", f"learning_curve={tmp_path / 'lc'}"]
+    study.run(SimpleNamespace(init=None, study=str(root), name=None, goal=None, elements=None, register=regs, extra_roots=None))
+    dep = deploy.run(SimpleNamespace(study=str(root), model_name="emt-cu", output=None, penalty_dist=0.02, penalty_scaling=1e5, reduce=True))
+    assert "params.txt" in dep["files"]
+    st = al_status.run(SimpleNamespace(study=str(root), al_dir=None, base_manifest=None, base_params=None, plot=False))
+    assert st["verdict"] == "NO_ROUNDS"
+    rep = study_report.run(SimpleNamespace(study=str(root)))
+    text = Path(rep["report"]).read_text()
+    assert "Equation of state" in text and "data sufficiency" in text.lower() and "## Figures" in text

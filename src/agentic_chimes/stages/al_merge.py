@@ -88,6 +88,29 @@ def run(args) -> dict:
     if problems:
         raise ValueError("; ".join(problems))
 
+    # duplicates: a frame already in training inflates its weight silently; one identical to a holdout frame leaks
+    from .data_curate import _dedupe_key
+
+    hold_keys = set()
+    if manifest.get("holdout_xyzf") and Path(manifest["holdout_xyzf"]).is_file():
+        hold_keys = {_dedupe_key(f) for f in xyzf_io.read_xyzf(manifest["holdout_xyzf"])}
+    leak = [i for i, f in enumerate(new_frames) if _dedupe_key(f) in hold_keys]
+    if leak:
+        raise ValueError(f"{len(leak)} new frame(s) are identical to holdout frames (indices {leak[:10]}): merging them "
+                         "would leak the holdout into training. Remove them, or they came from the wrong pool")
+    seen = {_dedupe_key(f) for f in base}
+    kept, dropped = [], 0
+    for f in new_frames:
+        key = _dedupe_key(f)
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        kept.append(f)
+    new_frames = kept
+    if not new_frames:
+        raise ValueError("every new frame duplicates a training frame: nothing to merge")
+
     out = Path(getattr(args, "output_dir", None) or ".").resolve()
     fs.ensure_dir(out)
     train = out / "train.xyzf"
@@ -98,8 +121,9 @@ def run(args) -> dict:
     new_manifest = {**manifest, "train_xyzf": str(train), "n_train": len(merged), "frame_cycles": str(out / "frame_cycles.json"),
                     "sources": provs + new_provs,
                     "al_rounds": (manifest.get("al_rounds") or []) + [{"cycle": int(args.cycle), "n_added": len(new_frames),
+                                                                      "n_duplicates_dropped": dropped,
                                                                       "from": [str(Path(p).resolve()) for p in args.new_xyzf]}]}
     atomic.write_json((out / "data_manifest.json"), new_manifest, indent=1)
     return {"data_manifest": str(out / "data_manifest.json"), "train_xyzf": str(train), "n_train": len(merged),
-            "n_added": len(new_frames), "holdout_xyzf": manifest.get("holdout_xyzf"),
+            "n_added": len(new_frames), "n_duplicates_dropped": dropped, "holdout_xyzf": manifest.get("holdout_xyzf"),
             "frame_cycles": str(out / "frame_cycles.json"), "cycle": int(args.cycle)}

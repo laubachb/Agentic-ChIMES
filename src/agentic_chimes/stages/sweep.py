@@ -124,8 +124,8 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
     mb_args = ns(
         fm_setup_in=fm_result["fm_setup_in"],
         chimes_lsq_bin=base.get("chimes_lsq_bin"),
-        algorithm=overrides.get("algorithm", base.get("algorithm", "svd")),
-        alpha=overrides.get("alpha", base.get("alpha", 1.0e-4)),
+        algorithm=overrides.get("algorithm", base.get("algorithm", "lassolars")),
+        alpha=overrides.get("alpha", base.get("alpha", 1.0e-5)),
         eps=base.get("eps", 1.0e-5),
         weights=base.get("weights"),
         folds=base.get("folds", 4),
@@ -140,26 +140,31 @@ def _run_one_point(base: dict, overrides: dict, holdout_xyzf: str, point_dir: Pa
     )
     mb_result = model_build.run(mb_args)
 
-    ev_args = ns(params=[mb_result["params"]], holdout_xyzf=holdout_xyzf, max_frames=base.get("max_frames"))
+    ev_args = ns(params=[mb_result["params"]], holdout_xyzf=holdout_xyzf, max_frames=base.get("max_frames"), per_frame=True)
     ev_result = evaluate.run(ev_args)
+    from ._hyper import bootstrap_se
 
+    ev0 = ev_result["results"][0]
     return {
         "params": mb_result["params"],
-        "rmse_force_kcal_mol_ang": ev_result["results"][0]["rmse_force_kcal_mol_ang"],
-        "relative_force_error": ev_result["results"][0]["relative_force_error"],
-        "rmse_energy_kcal_mol": ev_result["results"][0]["rmse_energy_kcal_mol"],
+        "rmse_force_kcal_mol_ang": ev0["rmse_force_kcal_mol_ang"],
+        "relative_force_error": ev0["relative_force_error"],
+        # bootstrap over holdout frames: differences smaller than ~this are noise
+        "relative_force_error_se": round(bootstrap_se(ev0["per_frame_force"]), 5) if ev0.get("per_frame_force") else None,
+        "by_composition": {g: v["relative_force_error"] for g, v in (ev0.get("by_composition") or {}).items()},
+        "rmse_energy_kcal_mol": ev0["rmse_energy_kcal_mol"],
     }
 
 
 def _write_csv(path: Path, results: list) -> None:
-    fieldnames = ["index", "status"] + GRID_KEYS + ["rmse_force_kcal_mol_ang", "relative_force_error", "rmse_energy_kcal_mol", "wall_time_s", "params", "error"]
+    fieldnames = ["index", "status"] + GRID_KEYS + ["rmse_force_kcal_mol_ang", "relative_force_error", "relative_force_error_se", "rmse_energy_kcal_mol", "wall_time_s", "params", "error"]
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for r in results:
             row = {"index": r["index"], "status": r["status"],
                    **{k: (json.dumps(v) if isinstance(v, list) else v) for k, v in r.get("overrides", {}).items()}}
-            row.update({k: r.get(k) for k in ("rmse_force_kcal_mol_ang", "relative_force_error", "rmse_energy_kcal_mol", "wall_time_s", "params", "error")})
+            row.update({k: r.get(k) for k in ("rmse_force_kcal_mol_ang", "relative_force_error", "relative_force_error_se", "rmse_energy_kcal_mol", "wall_time_s", "params", "error")})
             writer.writerow(row)
 
 
@@ -207,4 +212,11 @@ def run(args) -> dict:
         if with_energy:
             best_by["rmse_energy"] = min(with_energy, key=lambda r: r["rmse_energy_kcal_mol"])["index"]
 
-    return {"n_points": len(points), "n_done": len(done), "n_failed": len(points) - len(done), "results": results, "table_csv": str(csv_path), "best_by": best_by}
+    tied = []
+    if done:
+        b = min(done, key=lambda r: r["relative_force_error"])
+        se = b.get("relative_force_error_se") or 0.0
+        tied = [r["index"] for r in done if r["relative_force_error"] - b["relative_force_error"] <= se]
+    return {"n_points": len(points), "n_done": len(done), "n_failed": len(points) - len(done), "results": results,
+            "table_csv": str(csv_path), "best_by": best_by,
+            "tied_with_best": tied}  # within one bootstrap SE of the best relative force error: indistinguishable

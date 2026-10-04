@@ -1,6 +1,84 @@
 # Changelog
 
-## Unreleased — robustness: failure modes found by injection
+## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
+
+- **Worker pools spawn instead of fork** (`io/pool.py`; `al-batch`, `fingerprint`,
+  `md-check`, `hyper-search`). Forking after QUESTS started numba's threads
+  deadlocked inside `fork()` on Dane compute nodes: three `al-batch` jobs wrote
+  nothing and timed out. Native codes are likewise started without a
+  `preexec_fn` (the core-dump limit is set on the parent), which removed a
+  second deadlock when the committee launched `chimes_lsq`. `al-batch` on the
+  Cu-Zr harvest now finishes in 81 s. Thread and worker counts also follow the CPU affinity
+  the job was given, not the node's core count.
+- **Cross-validation in `hyper-search`** (`--cv-folds k`): every point scored
+  on all training frames via zero row weights in one design matrix
+  (group-aware, stratified folds; closest contacts protected). The external
+  holdout stays reported. On Cu-Zr the SE fell from 0.06 to 0.035, and CV
+  exposed variance the holdout hid (3-body model: holdout 0.31, CV 0.66,
+  with four "fragile" frames mispredicted when held out). CV reports the
+  median per-frame error and the fragile frames.
+- **More detailed sweep**: `smoothing` stage (TERSOFF 0.5/0.75 vs CUBIC),
+  `lambda_pairs` (per-pair λ), `refine` now also tries cutoff midpoints;
+  one-dimensional sensitivity `profiles`; a generated
+  `search/HYPER_REPORT.md`.
+- **`learning-curve`** (new): holdout error vs training size from one
+  design matrix; data-limited vs plateau verdict with extrapolation. Cu-Zr:
+  plateau from 63 of 126 frames (energies still improving).
+- **QUESTS** (`quests` stage, extra `[quests]`): entropy, diversity,
+  entropy curve/saturation, per-environment dH novelty, greedy
+  entropy-maximizing selection; `dataset-select --method quests` and
+  `data-curate --selection quests`.
+- **Active learning**: `al-batch` (close contacts + QUESTS + fingerprint +
+  committee → one deduplicated batch within a budget, every score
+  recorded), `al-status` (per-round holdout errors on the fixed holdout,
+  stability, novelty, CONVERGED/CONTINUE verdict, `AL_STATUS.md`).
+  `al-merge` refuses holdout duplicates and drops training duplicates.
+- **Labeling**: `qe-converge` (ecutwfc and k-spacing ladders on one frame,
+  `--collect` recommends the cheapest converged setting). `qe-relabel`
+  accepts triclinic cells (ibrav 0 with the full cell), which most
+  open-database frames are.
+- **Reporting**: plots (`evaluate --plot` parity and per-composition bars;
+  `md-check` temperature/energy/RDF; `eos-check` E(V); `learning-curve`;
+  `quests` dH histograms; `al-status` progress), new registry keys
+  (`md_check`, `eos_check`, `fingerprint`, `quests`, `committee`,
+  `learning_curve`, `evaluate`, `al_status`), and `study-report` sections
+  for data sufficiency, coverage/uncertainty, MD validation, equation of
+  state, active-learning rounds, and a Figures section.
+- `evaluate.evaluate_frames()` scores in-memory frames for the other stages.
+- Docs: concepts/model_selection.md, guide/troubleshooting.md, pages for
+  every new stage.
+
+## Fitting audit items (docs/development/fitting_audit.md)
+
+- **Silent failures fixed:** frames with an element a model does not know
+  are refused before chimes_calculator (which exited the process with
+  status 0). `amat-build` checks `fm_setup.in` against its trajectory
+  (NFRAMES, elements, cutoff vs box with NLAYERS, stresses/energies, inner
+  cutoff vs closest contact); chimes_lsq segfaulted on a frame-count
+  mismatch. Core dumps are disabled for native codes.
+- **Per-composition accuracy:** `evaluate` reports `by_composition`,
+  `by_element` and `worst_frames`. `hyper-search` refuses a "tied" cheaper
+  model that regresses any composition beyond its paired noise. On Cu-Zr
+  this kept a cross 3-body type and improved the model (pooled 0.313 →
+  0.303, pure Cu 0.145 → 0.093, energy 0.854 → 0.737 kcal/mol/atom).
+- **MD-ready deployment:** `deploy` writes the repulsive penalty explicitly
+  (0.02 Å, 1e5 kcal/mol/Å³; chimesFF's implicit 1e4/0.01 let 20 of 81
+  frames at 1200 K sample inside the inner cutoff, the new default 2) and
+  removes zeroed coefficients (identical predictions, 21 % faster on a
+  4-body model). `md-check` validates with the same penalty;
+  `hyper-search`'s MD cost counts nonzero coefficients.
+- **`alpha` stage** in `hyper-search`; **memory-capped parallel fits**
+  (one fit peaks at ~20× the dense matrix); **shared design matrices** for
+  solve-only variants (alpha, stress, 4-body solvers).
+- **`committee`** (new): bootstrap committee of one basis, candidates
+  ranked by force/energy spread → `uncertain.xyzf`.
+- **`eos-check`** (new): Birch-Murnaghan equation of state, clamped-ion
+  elastic tensor, Born stability, optional DFT pressure comparison.
+- `auto-build` now fits through `hyper-search`. `solve`/`model-build`/
+  `sweep` default to `lassolars` α = 1e-5. `sweep` reports bootstrap SE,
+  per-composition errors and `tied_with_best`.
+
+## Robustness: failure modes found by injection
 
 - **Masses from the model.** `lammps-run`, `md-check` and `benchmark` take
   element types and masses from `params.txt` and refuse disagreeing inputs.

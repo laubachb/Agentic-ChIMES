@@ -44,9 +44,9 @@ SCHEMA = {
             "type": "string",
             "enum": ["svd", "fast_svd", "ridge", "fast_ridge", "ridgecv", "lasso", "lassolars", "nsvd", "nridge", "nlasso", "nridgecv", "blocklasso", "dlars", "dlasso"],
             "description": "n* = column-normalized: nsvd uses eps, nridge/nlasso use alpha, nridgecv picks alpha by 5-fold CV over whole training frames (needs amat-build's b-labeled.txt/natoms.txt next to b.txt); blocklasso = lassolars with each body-order block rescaled to the 2-body scale (needs fm_setup.log next to b.txt).",
-            "default": "svd",
+            "default": "lassolars",
         },
-        "alpha": {"type": "number", "default": 1.0e-4},
+        "alpha": {"type": "number", "default": 1.0e-5},
         "eps": {"type": "number", "default": 1.0e-5},
         "weights": {"type": ["string", "null"]},
         "folds": {"type": "integer", "default": 4},
@@ -71,8 +71,8 @@ def add_arguments(parser) -> None:
     parser.add_argument("--header", default=None)
     parser.add_argument("--map", default=None)
     parser.add_argument("--dim", default=None)
-    parser.add_argument("--algorithm", default="svd")
-    parser.add_argument("--alpha", type=float, default=1.0e-4)
+    parser.add_argument("--algorithm", default="lassolars")
+    parser.add_argument("--alpha", type=float, default=1.0e-5)
     parser.add_argument("--eps", type=float, default=1.0e-5)
     parser.add_argument("--weights", default=None)
     parser.add_argument("--folds", type=int, default=4)
@@ -197,7 +197,7 @@ def run(args) -> dict:
         if not getattr(args, req, None):
             raise ValueError(f"solve requires --{req} (or {req!r} in --json-in)")
 
-    algorithm = args.algorithm or "svd"
+    algorithm = args.algorithm or "lassolars"
     work_dir = Path(getattr(args, "output_dir", None) or Path(args.A).resolve().parent)
     fs.ensure_dir(work_dir)
 

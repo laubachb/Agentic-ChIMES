@@ -38,6 +38,9 @@ Always run `<stage> --describe` for exact flags.
 - **Orders:** start at 12/7/3 (2b/3b/4b). Sweep 2b first, then 3b with 2b
   fixed; add 4b only if 3b plateaus and the basis size is affordable — 4b
   cost grows steeply.
+- **Defaults:** `solve`/`model-build` use `lassolars` at α = 1e-5 (as
+  every search does). `amat-build` checks `fm_setup.in` against its data
+  first; read `preflight_warnings`.
 - **`alpha`:** the chimes_lsq docs suggest 1e-5 for normalized and 1e-2 for
   un-normalized fits. `hyper-search` uses 1e-5 with raw `lassolars`, which
   held up on Cu-Zr (column scales are tiny for 3-/4-body terms, so a small α

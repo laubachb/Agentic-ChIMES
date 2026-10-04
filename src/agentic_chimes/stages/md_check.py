@@ -37,7 +37,7 @@ import math
 import random
 import re
 import sys
-from concurrent.futures import ProcessPoolExecutor
+from ..io.pool import process_pool
 from pathlib import Path
 
 import numpy as np
@@ -73,6 +73,9 @@ SCHEMA = {
         "harvest_close": {"type": "integer", "default": 20},
         "harvest_other": {"type": "integer", "default": 20},
         "workers": {"type": "integer", "default": 1},
+        "plot": {"type": "boolean", "default": True, "description": "Per run: temperature.png, energy.png, rdf.png."},
+        "penalty_dist": {"type": ["number", "null"], "description": "Penalty onset (Å) to apply. Default: the model's explicit value, else 0.02 (what deploy writes)."},
+        "penalty_scaling": {"type": ["number", "null"], "description": "Penalty prefactor (kcal/mol/Å³). Default: the model's explicit value, else 1e5 (what deploy writes)."},
         "run_timeout_s": {"type": "integer", "default": 1800},
         "seed": {"type": "integer", "default": 7},
         "machine": {"type": ["string", "null"]},
@@ -106,6 +109,9 @@ def add_arguments(parser) -> None:
     parser.add_argument("--harvest-close", dest="harvest_close", type=int, default=20)
     parser.add_argument("--harvest-other", dest="harvest_other", type=int, default=20)
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--penalty-dist", dest="penalty_dist", type=float, default=None)
+    parser.add_argument("--no-plot", dest="plot", action="store_false", default=True)
+    parser.add_argument("--penalty-scaling", dest="penalty_scaling", type=float, default=None)
     parser.add_argument("--run-timeout-s", dest="run_timeout_s", type=int, default=1800)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--machine", default=None)
@@ -274,7 +280,7 @@ def run_case(case: dict) -> dict:
     try:
         fs.ensure_dir(out)
         xyzf_io.write_xyzf([case["frame"]], out / "start.xyzf")
-        text = lammps_run._render_input("md", "structure.data", str(Path(case["params"]).resolve()),
+        text = lammps_run._render_input("md", "structure.data", str(Path(case.get("run_params", case["params"])).resolve()),
                                         temperature=case["temperature"], nsteps=case["nsteps"],
                                         timestep=case["timestep"], md_seed=case["seed"])
         text = text.replace("thermo 100", f"thermo {case['dump_every']}").replace(
@@ -284,7 +290,9 @@ def run_case(case: dict) -> dict:
         import subprocess
 
         from .. import config
-        from ..hpc.local import singleton_env
+        from ..hpc.local import no_core_dumps, singleton_env
+
+        no_core_dumps()
 
         lmp = config.resolve_component("lammps_bin")
         try:
@@ -425,11 +433,24 @@ def run(args) -> dict:
     from .evaluate import max_outer_cutoff
 
     frame = _start_frame(args, max(params, key=max_outer_cutoff))
+    # run each model as it will be deployed: explicit penalty (deploy's defaults unless the model or user sets one)
+    run_params, penalties = {}, {}
+    for m, p in enumerate(params):
+        pen = params_io.penalty(p)
+        dist = getattr(args, "penalty_dist", None)
+        scaling = getattr(args, "penalty_scaling", None)
+        dist = dist if dist is not None else (pen["dist"] if pen["explicit"] else params_io.DEFAULT_PENALTY_DIST)
+        scaling = scaling if scaling is not None else (pen["scaling"] if pen["explicit"] else params_io.DEFAULT_PENALTY_SCALING)
+        if pen["explicit"] and pen["dist"] == dist and pen["scaling"] == scaling:
+            run_params[p] = p
+        else:
+            run_params[p] = str(params_io.set_penalty(p, out / f"model{m}.params.txt", dist=dist, scaling=scaling))
+        penalties[p] = {"dist": dist, "scaling": scaling}
     cases = []
     for m, p in enumerate(params):
         for t in temps:
             cases.append({
-                "params": p, "temperature": float(t), "dir": str(out / f"model{m}_T{int(t)}"), "frame": frame,
+                "params": p, "run_params": run_params[p], "temperature": float(t), "dir": str(out / f"model{m}_T{int(t)}"), "frame": frame,
                 "elements": args.elements, "masses": args.masses, "nsteps": args.nsteps, "timestep": args.timestep,
                 "dump_every": getattr(args, "dump_every", 20) or 20, "seed": getattr(args, "seed", 7) or 7,
                 "timeout_s": getattr(args, "run_timeout_s", 1800) or 1800,
@@ -437,9 +458,10 @@ def run(args) -> dict:
                 "max_pe_jump": getattr(args, "max_pe_jump_per_atom", 1.0) or 1.0,
                 "margin": getattr(args, "close_contact_margin", 0.1), "rdf_rmax": rmax, "reference_rdf": ref_rdf,
             })
+    case_natoms = frame.natoms
     workers = max(1, getattr(args, "workers", 1) or 1)
     if workers > 1 and len(cases) > 1:
-        with ProcessPoolExecutor(max_workers=min(workers, len(cases))) as pool:
+        with process_pool(min(workers, len(cases))) as pool:
             results = list(pool.map(run_case, cases))
     else:
         results = [run_case(c) for c in cases]
@@ -477,6 +499,7 @@ def run(args) -> dict:
         dist = [np.mean(list(r["rdf_distance"].values())) for r in rs if r.get("rdf_distance")]
         per_model.append({
             "params": p,
+            "penalty": penalties[p],
             "stable_at_all_temperatures": all(r.get("stable") for r in rs),
             "unstable_temperatures": [r["temperature"] for r in rs if not r.get("stable")],
             "not_equilibrated_temperatures": [r["temperature"] for r in rs if r.get("stable") and not r.get("equilibrated")],
@@ -496,7 +519,29 @@ def run(args) -> dict:
     if ref_rdf is None:
         notes.append("no reference_xyzf: RDFs were saved but not compared; give DFT-MD frames at these conditions to rank "
                      "candidates by structure (Lindsey 2019)")
-    report = {"structure_natoms": frame.natoms, "temperatures": temps, "nsteps": args.nsteps, "timestep_fs": args.timestep,
+    plots_made = []
+    if getattr(args, "plot", True):
+        from ..io import plots
+
+        for r in results:
+            d = Path(r["dir"])
+            log = d / "log.lammps"
+            th = _thermo(log.read_text()) if log.is_file() else []
+            if len(th) > 2:
+                steps = [t[0] for t in th]
+                png = plots.lines({"temperature (K)": (steps, [t[1] for t in th])}, d / "temperature.png",
+                                  xlabel="step", ylabel="T (K)", title=f"{d.name}: temperature", marker="")
+                plots_made += [p for p in (png,) if p]
+                png = plots.lines({"potential energy / atom": (steps, [t[2] / case_natoms for t in th])}, d / "energy.png",
+                                  xlabel="step", ylabel="PE (kcal/mol/atom)", title=f"{d.name}: potential energy", marker="")
+                plots_made += [p for p in (png,) if p]
+            rdf = d / "rdf.npz"
+            if rdf.is_file():
+                data = np.load(rdf)
+                series = {k: (data[k][0], data[k][1]) for k in data.files}
+                png = plots.lines(series, d / "rdf.png", xlabel="r (Å)", ylabel="g(r)", title=f"{d.name}: partial RDFs", marker="")
+                plots_made += [p for p in (png,) if p]
+    report = {"plots": plots_made, "structure_natoms": frame.natoms, "temperatures": temps, "nsteps": args.nsteps, "timestep_fs": args.timestep,
               "models": per_model, "runs": results, "harvest_xyzf": str(harvest_path) if harvest_path else None,
               "n_harvested": len(harvest), "n_harvested_close_contact": n_close, "n_harvested_other": n_other,
               "notes": notes}

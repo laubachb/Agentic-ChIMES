@@ -56,7 +56,8 @@ SCHEMA = {
         "require_orthorhombic": {"type": "boolean", "default": False},
         "max_volume_ratio": {"type": ["number", "null"], "default": 3.0, "description": "Drop frames whose volume per atom exceeds this multiple of the pool median: clusters/molecules in vacuum boxes, which general databases include but a bulk model should not fit. null keeps them."},
         "coverage_cutoff_ang": {"type": "number", "default": 6.0, "description": "Pair-distance analysis radius."},
-        "target_size": {"type": ["integer", "null"], "description": "Farthest-point subsample to this many frames before splitting."},
+        "target_size": {"type": ["integer", "null"], "description": "Subsample to this many frames before splitting (see selection)."},
+        "selection": {"type": "string", "enum": ["fps", "quests"], "default": "fps", "description": "How target_size frames are chosen: fps (composition/energy farthest-point) or quests (entropy-maximizing in QUESTS environment space; needs `pip install quests`)."},
         "holdout_fraction": {"type": ["number", "null"], "default": 0.2, "description": "Composition-stratified holdout; null = no split."},
         "split_by": {"type": "string", "enum": ["group", "frame"], "default": "group", "description": "Hold out whole groups of correlated frames (relaxation paths, closely spaced MD frames; see dataset-select) or independent frames. group avoids near-copies of training frames in the holdout, which overstates accuracy."},
         "allow_mixed_theory": {"type": "boolean", "default": False, "description": "Permit merging pools from different datasets or levels of theory. Energies from different DFT setups are not comparable; only use after checking settings match."},
@@ -85,6 +86,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--keep-vacuum", dest="max_volume_ratio", action="store_const", const=None)
     parser.add_argument("--coverage-cutoff-ang", dest="coverage_cutoff_ang", type=float, default=6.0)
     parser.add_argument("--target-size", dest="target_size", type=int, default=None)
+    parser.add_argument("--selection", choices=["fps", "quests"], default="fps")
     parser.add_argument("--holdout-fraction", dest="holdout_fraction", type=float, default=0.2)
     parser.add_argument("--split-by", dest="split_by", choices=["group", "frame"], default="group")
     parser.add_argument("--no-holdout", dest="holdout_fraction", action="store_const", const=None)
@@ -299,11 +301,13 @@ def run(args) -> dict:
     if target_size and target_size < len(kept):
         filtered = out / "filtered.xyzf"
         xyzf_io.write_xyzf([frames[k] for k in kept], filtered)
-        sel = dataset_select.run(ns(frames=str(filtered), method="fps", n_select=target_size, holdout_fraction=None,
+        method = getattr(args, "selection", "fps") or "fps"
+        sel = dataset_select.run(ns(frames=str(filtered), method=method, n_select=target_size, holdout_fraction=None,
                                     seed=seed, descriptor="composition_energy" if energy_idx else "composition",
                                     output_dir=str(out / "_fps")))
         kept = [kept[i] for i in sel["selected_indices"]]
-        selection_note = f"farthest-point sampled {target_size} of {sel['n_pool']} filtered frames"
+        selection_note = (f"{'QUESTS entropy-maximizing' if method == 'quests' else 'farthest-point'} selection of "
+                          f"{target_size} of {sel['n_pool']} filtered frames")
 
     curated_frames = [frames[k] for k in kept]
     curated = out / "curated.xyzf"

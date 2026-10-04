@@ -70,6 +70,15 @@ Write `01_data/DATA_PLAN.md` before fetching anything:
 
 - Fetches and generation are local and need no approval; keep them capped
   (`--max-frames`, `max_atoms`) and write one packed `.xyzf` per source.
+- Prefer `--selection quests` with `--target-size` when QUESTS is installed:
+  it picks the subset with the most structural information (greedy entropy
+  gain, closest contacts first) instead of composition farthest-point
+  sampling. `chimes-agent quests --reference-xyzf <pool>` reports the pool's
+  entropy and whether it has saturated (more of the same adds nothing).
+- Before the first QE job, converge the settings once on a representative
+  frame: `qe-converge` (ecutwfc and k-spacing ladders; `--collect`
+  recommends the cheapest converged setting). Reuse that setting for every
+  later batch.
 - `data-curate` on structure pools before QE too: it removes duplicates,
   vacuum clusters and too-close atoms, and `--target-size` farthest-point
   sampling picks a diverse subset so you pay for fewer QE jobs.

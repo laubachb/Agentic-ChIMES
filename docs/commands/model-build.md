@@ -32,6 +32,8 @@ Union of `amat-build` and `solve`'s flags: `--fm-setup-in`,
 `--chimes-lsq-bin`, `--algorithm`, `--alpha`, `--eps`, `--weights`,
 `--folds`.
 
+Defaults: `--algorithm lassolars --alpha 1e-5`, matching `hyper-search` (formerly `svd`).
+
 ## Output
 
 ```json

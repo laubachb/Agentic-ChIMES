@@ -77,6 +77,31 @@ for a future uncertainty-based active-learning selector. It is not used by
   model's inner cutoff. There the repulsive penalty dominates the error. A
   warning says so, because the fix is in the data split, not the model.
 
+### Per composition and per element
+
+Every result carries:
+
+- `by_composition`: relative force error for each element set, e.g.
+  `Cu`, `Zr`, `Cu-Zr`;
+- `by_element`: per atom type;
+- `worst_frames`: the five frames with the largest relative error (likely
+  mislabeled frames or coverage holes).
+
+`--per-frame` adds `per_frame_group`. On Cu-Zr the pooled 0.31 hid alloy
+frames at 0.43 vs pure Cu at 0.15.
+
+Frames containing an element a model does not describe are refused up
+front. chimes_calculator calls `exit()` inside the library on an unknown
+type, which used to end the process silently with status 0.
+
+### Plots
+
+`--plot` with `--output-dir` writes `parity_forces.png` (predicted vs
+reference force components, colored by element) and
+`error_by_composition.png`. Other stages (cross-validation, learning
+curves, `al-status`) score frames through `evaluate.evaluate_frames()`
+without temporary files.
+
 ## Units
 
 Training/holdout `.xyzf` forces are **hartree/bohr** (ChIMES

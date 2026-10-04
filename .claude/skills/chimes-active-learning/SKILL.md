@@ -12,10 +12,17 @@ One round, in `<study>/03_al/round<k>/`, each step a stage call:
 1. **Candidates.** Run `md-check` with the current model at the target
    temperatures (Slurm; dry run first). `run/harvest.xyzf` holds up to 20
    close-contact and 20 other frames per run.
-2. **Prioritize.** Run `fingerprint --reference-xyzf <train> --candidates-xyzf
-   harvest.xyzf`. `novel.xyzf` holds the frames outside the training
-   distribution. If the pool is still large, run `al-select` on it (energy
-   histogram diversity).
+2. **Prioritize.** Run `al-batch --candidates-xyzf harvest.xyzf --train-xyzf
+   <train> --params <model> --fm-setup-in <basis> --budget N`. It combines
+   close contacts (first), QUESTS dH, fingerprint D_j² and committee spread,
+   drops duplicates, and writes `batch.xyzf` + `batch.json`. Run `quests`
+   on the harvest too (`round<k>/quests/`): `al-status` uses its novel
+   fraction for the stopping rule. `al-select` (energy-histogram
+   diversity) remains for very large pools.
+   For model disagreement as well as structural novelty, run `committee
+   --fm-setup-in <best fm_setup.in> --candidates-xyzf harvest.xyzf`.
+   `uncertain.xyzf` holds the frames the bootstrap members disagree on
+   most. Label the union of novel and uncertain frames first.
 3. **Label.** Run `qe-relabel` with **exactly the base set's QE settings**
    (from `provenance.json`). This is a Slurm submission: dry run, approval,
    then `--collect`. Optionally `data-curate --no-holdout` on the labeled
@@ -38,7 +45,13 @@ One round, in `<study>/03_al/round<k>/`, each step a stage call:
 6. **Re-validate.** `evaluate` on the unchanged holdout, then `md-check` and
    `fingerprint` again.
 
-**Stop** when all of these hold, and say which held:
+7. **Status.** `al-status --study <study>` scores every round's refit on the
+   fixed holdout and gives CONVERGED / CONTINUE with reasons
+   (`03_al/AL_STATUS.md`, `al_progress.png`). Before the first round, run
+   `learning-curve` on the chosen basis: at a plateau, new *conditions*
+   (coverage) help and more of the same frames do not.
+
+**Stop** when all of these hold (`al-status` checks them), and say which held:
 
 - stable at every target temperature;
 - `below_inner_cutoff_frames` = 0;

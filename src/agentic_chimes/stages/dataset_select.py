@@ -53,7 +53,7 @@ SCHEMA = {
     "required": ["frames", "method"],
     "properties": {
         "frames": {"type": "string", "description": "Path to a .xyzf frame pool."},
-        "method": {"type": "string", "enum": ["fps", "random", "stratified_holdout"]},
+        "method": {"type": "string", "enum": ["fps", "random", "stratified_holdout", "quests"], "description": "quests = greedy entropy-maximizing subset in QUESTS environment space (needs `pip install quests`)."},
         "n_select": {"type": ["integer", "null"], "description": "Size of the selected/train set; alternative to holdout_fraction."},
         "holdout_fraction": {"type": ["number", "null"], "description": "Fraction of the pool held out; alternative to n_select."},
         "seed": {"type": "integer", "default": 42},
@@ -67,7 +67,7 @@ SCHEMA = {
 
 def add_arguments(parser) -> None:
     parser.add_argument("--frames", default=None)
-    parser.add_argument("--method", choices=["fps", "random", "stratified_holdout"], default=None)
+    parser.add_argument("--method", choices=["fps", "random", "stratified_holdout", "quests"], default=None)
     parser.add_argument("--n-select", dest="n_select", type=int, default=None)
     parser.add_argument("--holdout-fraction", dest="holdout_fraction", type=float, default=None)
     parser.add_argument("--seed", type=int, default=42)
@@ -160,6 +160,28 @@ def _farthest_point_sample(vectors, n_select: int, seed: int) -> list:
                 min_dist[i] = d
 
     return selected
+
+
+def quests_select(frames, n_select: int, seed: int) -> list:
+    """Greedy entropy-maximizing subset (QUESTS): start from the frame whose
+    environments are most spread out, then add the frame least covered by the
+    current selection. Closest-contact frames are included first."""
+    from .quests_stage import descriptors, frame_scores, _quests
+
+    _, e = _quests()
+    from quests.entropy import DEFAULT_BANDWIDTH, DEFAULT_BATCH
+
+    X, owner = descriptors(frames, kind="single")
+    chosen = sorted(closest_contact_frames(frames))
+    if not chosen:
+        chosen = [int(np.argmax(frame_scores(e.delta_entropy(X, X, h=DEFAULT_BANDWIDTH, batch_size=DEFAULT_BATCH), owner, len(frames), "mean")))]
+    while len(chosen) < min(n_select, len(frames)):
+        ref = X[np.isin(owner, chosen)]
+        dh = e.delta_entropy(X, ref, h=DEFAULT_BANDWIDTH, batch_size=DEFAULT_BATCH)
+        scores = frame_scores(dh, owner, len(frames), "mean")
+        scores[chosen] = -np.inf
+        chosen.append(int(np.nanargmax(scores)))
+    return chosen[:n_select]
 
 
 def _composition_class(frame) -> tuple:
@@ -308,8 +330,8 @@ def run(args) -> dict:
     if not getattr(args, "frames", None):
         raise ValueError("dataset-select requires --frames (or 'frames' in --json-in)")
     method = getattr(args, "method", None)
-    if method not in ("fps", "random", "stratified_holdout"):
-        raise ValueError("dataset-select requires --method {fps,random,stratified_holdout}")
+    if method not in ("fps", "random", "stratified_holdout", "quests"):
+        raise ValueError("dataset-select requires --method {fps,random,stratified_holdout,quests}")
 
     frames = xyzf_io.read_xyzf(args.frames)
     n_pool = len(frames)
@@ -323,6 +345,9 @@ def run(args) -> dict:
         descriptor = getattr(args, "descriptor", "composition") or "composition"
         vectors = _descriptor_matrix(frames, descriptor)
         selected_indices = sorted(_farthest_point_sample(vectors, n_select, seed))
+        holdout_indices = [i for i in range(n_pool) if i not in set(selected_indices)]
+    elif method == "quests":
+        selected_indices = sorted(quests_select(frames, n_select, seed))
         holdout_indices = [i for i in range(n_pool) if i not in set(selected_indices)]
     elif method == "random":
         rng = random.Random(seed)

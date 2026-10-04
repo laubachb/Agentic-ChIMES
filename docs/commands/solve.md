@@ -41,8 +41,8 @@ for why (found the hard way validating this exact path).
 
 - `--A`, `--b`, `--header`, `--map` PATH (required; from `amat-build`'s output)
 - `--dim PATH` — `dim.txt` from `amat-build`; **required** for `dlars`/`dlasso`
-- `--algorithm` (default `svd`)
-- `--alpha` (default `1e-4` local / use `1e-5` for dlars — see below)
+- `--algorithm` (default `lassolars`, as in every search; it was `svd` before 2026-10-03)
+- `--alpha` (default `1e-5`; `hyper-search`'s `alpha` stage tunes it)
 - `--eps` (default `1e-5`) — SVD regularization
 - `--weights PATH` — optional per-equation weight file
 - `--folds` (default `4`) — CV folds for `ridgecv` / `nridgecv`

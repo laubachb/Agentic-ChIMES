@@ -17,7 +17,9 @@ emphasised.
 ## You may
 
 - Run `chimes-agent study`, `usage`, `deploy`, `study-report` and read every
-  file in the study.
+  file in the study. Register validation artifacts first (`study --register
+  md_check=… eos_check=… quests=… fingerprint=… committee=… learning_curve=…
+  evaluate=… al_status=…`) so the report's sections and figures fill.
 - Edit `REPORT.md` (replace the NARRATIVE placeholders; keep the generated
   tables) and write nothing else outside the study directory.
 

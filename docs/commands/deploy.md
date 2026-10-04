@@ -6,6 +6,17 @@
 chimes-agent deploy --study /p/lustre2/$USER/studies/cuzr [--model-name cuzr-v1]
 ```
 
+The deployed `params.txt` is MD-ready, unlike the raw fit:
+
+- **Repulsive penalty written explicitly**: `--penalty-dist` (0.02 Å) and
+  `--penalty-scaling` (1e5 kcal/mol/Å³). chimes_lsq's documentation says to
+  add these before MD; without them chimesFF falls back to 1e4 and 0.01 Å.
+  On Cu-Zr at 1200 K the explicit default cut frames sampling distances
+  inside the inner cutoff from 20 to 2 (of 81).
+- **Zeroed coefficients removed** (`post_proc_chimes_lsq.py`; `--no-reduce`
+  to keep them). Predictions are identical (checked to 0.0), and a Cu-Zr
+  4-body model with 421 of 726 coefficients nonzero evaluated 21 % faster.
+
 Writes `<study>/06_deploy/` (and registers it):
 
 | file | content |

@@ -123,3 +123,10 @@ convergence), `missing_output` (job hasn't finished / never ran), or
 QE reports energy in Rydberg and forces in Ry/bohr; `qe2xyzf` converts to
 the same target convention `contrib/vasp2xyzf.py` writes (energy kcal/mol,
 forces hartree/bohr) — see `docs/concepts/units_and_conventions.md`.
+
+## Cells
+
+Any cell shape is accepted: `pw.in` uses `ibrav = 0` with the full
+`CELL_PARAMETERS` matrix, and `--kspacing` grids come from the reciprocal
+lattice. (Until 2026-10-03 triclinic frames were refused, which excluded
+most open-database cells.)

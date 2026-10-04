@@ -45,7 +45,15 @@ notable:
    models (Lindsey 2019). Do many-body terms use CUBIC smoothing where the
    literature uses TERSOFF? Before active learning, is the basis too lean
    (Lindsey 2025 recommends erring toward complexity)?
-8. **Fit flags.** `fitener` / `fitstrs` match what the user cares about
+8. **Groups and outliers.** Read `evaluate`'s `by_composition`,
+   `by_element` and `worst_frames`. A pooled error can hide the
+   composition that matters; one frame far above the rest is a candidate
+   mislabel or coverage hole. `n_frames_below_inner_cutoff` > 0 means the
+   split put a closer contact in the holdout than in training.
+9. **Deployment.** The deployed `params.txt` should carry explicit penalty
+   lines and be reduced (`deploy` does both). A raw fit used for MD
+   runs on chimesFF's weak default penalty.
+10. **Fit flags.** `fitener` / `fitstrs` match what the user cares about
    (energy-only vs force-only training changes what RMSE means).
 
 Report, in this order, in under 250 words:

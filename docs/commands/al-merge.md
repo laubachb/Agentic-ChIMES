@@ -14,6 +14,9 @@ checks what `cat a.xyzf b.xyzf` would get wrong:
   orthorhombic and triclinic cells stays readable by chimes_lsq.
 - **Fit flags.** New frames must carry energies if the fit uses them, and
   stresses if it fits stresses.
+- **Duplicates.** A new frame identical to a holdout frame is refused
+  (merging it would leak the holdout); one identical to a training frame
+  is dropped and counted (`n_duplicates_dropped`).
 - **Cycles.** `frame_cycles.json` records each training frame's cycle, for
   `weights --frame-cycles ... --decay-cycles n` (the n/I decay).
 

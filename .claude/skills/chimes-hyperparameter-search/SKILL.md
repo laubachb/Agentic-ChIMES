@@ -124,6 +124,28 @@ analysis and from the user's goal:
 - Quote accuracy as `reduced_force_rmse` from `evaluate` when comparing
   with published models (water 0.24-0.31, Carbon 2.0 0.28).
 
+### Statistics and detail (new stages)
+
+- `--cv-folds 4` scores every point by cross-validation over the training
+  frames (held-out frames get row weight 0 in the same design matrix). Use
+  it whenever the dataset is under ~500 frames: the SE falls from ~0.06
+  (30 holdout frames) to ~0.035 (120 CV frames), and group guards become
+  meaningful. The external holdout stays in the report as `ext_holdout_*`.
+  **If CV and holdout disagree by much more than their SEs, the model has
+  high variance** (its coefficients change with the data subset): say so,
+  prefer the more stable candidate, and consider TERSOFF smoothing or a
+  smaller many-body basis.
+- Stages `smoothing` (TERSOFF 0.5/0.75 vs CUBIC), `lambda_pairs` (one
+  pair's λ at a time), `refine` (now also cutoff midpoints) and `alpha` run
+  by default. `hyper_report.json` has `profiles`: one-dimensional
+  sensitivities around the final choice. Flat profiles = the data cannot
+  resolve that setting.
+- `search/HYPER_REPORT.md` is generated: stage tables, per-composition
+  errors, profiles, notes. Start `02_fit/HYPER_REPORT.md` from it and add
+  judgment, not tables.
+- After the choice, run `learning-curve` on `best/fm_setup.in`: it says
+  whether more data would help (data-limited) or not (plateau).
+
 ## 3. Run
 
 - `chimes-agent hyper-search --data-manifest ... --output-dir 02_fit/search
@@ -153,6 +175,20 @@ Write `02_fit/HYPER_REPORT.md`: the chosen settings, why (the stage
 reasons), the evidence (errors ± standard error), what was tried and ruled
 out, open doubts. Then have `chimes-fit-reviewer` read `best/params.txt`,
 the report and the holdout before the model is recommended.
+
+### Composition groups, α and memory (read in every report)
+
+- Stage tables carry `by_composition` per point. A point rejected for
+  hurting one group shows `group_regressions`. Report the per-group errors
+  of the final model, not just the pooled one: on Cu-Zr the pooled 0.31
+  hid alloy frames at 0.43. If the composition the user cares about is the
+  worst, say so plainly; it is usually a data problem (more frames of that
+  composition), not a hyperparameter one.
+- The `alpha` stage tunes LASSO/ridge strength on the chosen basis; report
+  the chosen α.
+- Notes may say parallel fits were capped by memory, or that one fit alone
+  exceeds the node. In the latter case, fit that basis with
+  `solve --algorithm dlars --machine` and say so.
 
 ## Solver
 

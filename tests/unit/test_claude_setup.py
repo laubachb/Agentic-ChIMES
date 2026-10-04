@@ -66,8 +66,10 @@ def test_agent_frontmatter(path):
 def test_claude_md_covers_every_stage():
     text = CLAUDE_MD.read_text()
     missing = []
+    import importlib
+
     for module_name in cli.STAGE_MODULE_NAMES:
-        stage = module_name.replace("_cmd", "").replace("_", "-")
+        stage = importlib.import_module(f"agentic_chimes.stages.{module_name}").NAME
         if f"`{stage}`" not in text:
             missing.append(stage)
     assert not missing, f"CLAUDE.md does not mention stage(s): {missing}"
@@ -95,7 +97,9 @@ def test_skills_reference_only_existing_skills_and_agents():
 
 
 def test_skills_mention_only_real_stages():
-    real = {m.replace("_cmd", "").replace("_", "-") for m in cli.STAGE_MODULE_NAMES}
+    import importlib
+
+    real = {importlib.import_module(f"agentic_chimes.stages.{m}").NAME for m in cli.STAGE_MODULE_NAMES}
     for path in _skill_files() + _agent_files():
         for stage in re.findall(r"chimes-agent ([a-z][a-z-]+)", path.read_text()):
             assert stage in real, f"{path.name}: `chimes-agent {stage}` is not a stage"

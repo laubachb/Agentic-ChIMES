@@ -19,9 +19,10 @@ and possibly a finished round to continue. Work in `<study>/03_al/round<k>/`.
 
 ## You may
 
-- Run `fingerprint`, `al-select`, `al-merge`, `fm-setup-gen`, `amat-build`,
+- Run `al-batch`, `quests`, `fingerprint`, `committee`, `al-select`,
+  `al-merge`, `learning-curve`, `al-status`, `fm-setup-gen`, `amat-build`,
   `weights`, `solve`, `evaluate`, `data-curate` locally when they are small
-  (one fit is seconds to a minute).
+  (one fit is seconds to a minute; a committee is a few fits).
 - Run `md-check`, `fingerprint` and `qe-relabel` with `--dry-run` to prepare
   Slurm work; run `qe-relabel --collect` on finished labeling.
 - Write `03_al/AL_LOG.md` (one entry per round: frames added, errors, MD
@@ -46,7 +47,7 @@ Round: <k>; frames added this round / total; cycle weights (n/I, n=...)
 Errors (fixed holdout): <relative force error, reduced RMSE, E/atom, pressure; vs previous round>
 MD: <stable per T; below_inner_cutoff_frames; close_contact_fraction>
 Coverage: <fingerprint D2 vs critical; fraction novel>
-Stopping: <which criteria hold / fail>
+Stopping: <al-status verdict and reasons; learning-curve verdict for the basis>
 Next batch: <path, n frames, why these>
 Commands awaiting approval:
   <exact md-check / fingerprint / qe-relabel commands + dry-run job files>

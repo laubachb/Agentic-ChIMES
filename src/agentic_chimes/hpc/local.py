@@ -18,3 +18,22 @@ def singleton_env() -> dict:
     pdebug node. Without these variables it starts as a singleton.
     """
     return {k: v for k, v in os.environ.items() if not k.startswith(_STEP_PREFIXES)}
+
+
+def no_core_dumps() -> None:
+    """Call before starting a native code: a crash must not drop a core file
+    into the study directory (they count against the Lustre file quota).
+
+    The limit is set on this process and inherited by its children. It is
+    deliberately not a `preexec_fn`: that runs Python between fork and exec,
+    which deadlocks when this process already has threads (numba after
+    QUESTS, OpenMP after a solve). Seen as an `al-batch` job that hung
+    starting chimes_lsq for its committee.
+    """
+    import resource
+
+    try:
+        hard = resource.getrlimit(resource.RLIMIT_CORE)[1]
+        resource.setrlimit(resource.RLIMIT_CORE, (0, hard))
+    except (ValueError, OSError):
+        pass

@@ -66,6 +66,27 @@ chimes-agent fingerprint --params <model>/params.txt --reference-xyzf 01_data/cu
 The fingerprint does not distinguish atom types (paper and shipped tool);
 for alloys it compares structure, not chemical order.
 
+Also run the physics checks (local, seconds):
+
+```bash
+chimes-agent eos-check --params <model>/params.txt --prototype '<ase bulk kwargs>' \
+  [--reference-xyzf 01_data/curate/holdout.xyzf] --output-dir 04_md/eos
+```
+
+- `B0` from E(V) should match `bulk_modulus_voigt_GPa` from the elastic
+  tensor, and `stress_vs_dEdV_max_abs_GPa` should be ≪ 1 GPa. Otherwise
+  something is wrong with the model or the structure.
+- Compare V0 and B0 with DFT for the same structure. `born_stable: false`
+  means the structure is mechanically unstable under the model.
+- `md-check` applies the deploy penalty (0.02 Å, 1e5) unless the model sets
+  one. Report the penalty used: it changes how often MD enters the inner
+  cutoff (Cu-Zr at 1200 K: 20 → 2 of 81 frames).
+
+Plots: `md-check` writes `temperature.png`, `energy.png`, `rdf.png` per
+run; `eos-check` writes `eos.png`; `evaluate --plot --output-dir` writes
+the force parity plot. Register the directories (`study --register
+md_check=…`, `eos_check=…`, `evaluate=…`) so `study-report` embeds them.
+
 ## 4. Report
 
 Write `04_md/MD_REPORT.md`: candidates, conditions, a stability table,

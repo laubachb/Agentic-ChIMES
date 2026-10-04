@@ -62,6 +62,7 @@ nav:
       - Study layout and artifacts: guide/study_layout.md
       - The agents: guide/agents.md
       - Compute, approvals and costs: guide/compute.md
+      - Troubleshooting: guide/troubleshooting.md
       - "Worked example: Cu-Zr": guide/example_cuzr.md
   - Commands:
       - commands/index.md
@@ -75,11 +76,14 @@ nav:
           - data-generate: commands/data-generate.md
           - data-curate: commands/data-curate.md
           - fingerprint: commands/fingerprint.md
+          - quests: commands/quests.md
           - dataset-select: commands/dataset-select.md
           - qe-relabel: commands/qe-relabel.md
+          - qe-converge: commands/qe-converge.md
       - Hyperparameters and fitting:
           - hyper-analyze: commands/hyper-analyze.md
           - hyper-search: commands/hyper-search.md
+          - learning-curve: commands/learning-curve.md
           - fm-setup-gen: commands/fm-setup-gen.md
           - amat-build: commands/amat-build.md
           - solve: commands/solve.md
@@ -92,10 +96,14 @@ nav:
       - Active learning:
           - al-select: commands/al-select.md
           - al-merge: commands/al-merge.md
+          - al-batch: commands/al-batch.md
+          - al-status: commands/al-status.md
+          - committee: commands/committee.md
           - al-run: commands/al-run.md
       - MD, performance, deployment:
           - lammps-run: commands/lammps-run.md
           - md-check: commands/md-check.md
+          - eos-check: commands/eos-check.md
           - benchmark: commands/benchmark.md
           - deploy: commands/deploy.md
       - Infrastructure:
@@ -113,8 +121,10 @@ nav:
       - concepts/vendored_forks.md
       - concepts/qm_driver_plugins.md
       - concepts/literature.md
+      - concepts/model_selection.md
   - Development:
       - development/assessment.md
+      - development/fitting_audit.md
   - Stage-by-stage tutorial: tutorials/end_to_end_holdout_study.md
 
 extra:

@@ -78,6 +78,9 @@ relative force error from ~0.3 to ~1.4.
 (chimes_lsq fits stresses for all frames or none). Otherwise it is false,
 with a warning.
 
+`--selection quests` picks the `--target-size` subset by QUESTS entropy
+gain instead of farthest-point sampling on composition/energy.
+
 ## Output files
 
 `curated.xyzf`, `train.xyzf`, `holdout.xyzf`, `curation_report.json`

@@ -21,7 +21,8 @@ reference frames. Work in `<study>/04_md/`.
 - Run `md-check` locally for one small case (≤ ~250 atoms, ≤ ~500 steps) to
   check that the setup works; run `md-check ... --machine <m> --dry-run` and
   `fingerprint ... --machine <m> --dry-run` to prepare the real runs.
-- Run `fingerprint` locally only for a few small frames.
+- Run `fingerprint`, `quests` and `eos-check` locally (seconds for a few
+  hundred frames), and `evaluate --plot` for the parity plot.
 - Read everything; write `04_md/MD_REPORT.md`; register runs with `study`.
 
 ## You must not
@@ -42,7 +43,8 @@ Conditions: <structure, atoms, temperatures, steps>
 Stability: <per candidate x T: stable / unstable (why) / not equilibrated>
 Close contacts: <below_inner_cutoff_frames, close_contact_fraction per T>
 Structure: <mean_rdf_distance per candidate, or "no reference">
-Coverage: <fingerprint D2 vs critical; fraction novel>
+Coverage: <fingerprint D2 vs critical; QUESTS novel fraction and entropy gain>
+Physics: <eos-check V0, B0, Born stability; vs DFT if known>
 Verdict: <use X | choose X over Y because ... | needs active learning>
 Next batch: <harvest.xyzf / novel.xyzf path and frame count, if AL is needed>
 Commands awaiting approval:

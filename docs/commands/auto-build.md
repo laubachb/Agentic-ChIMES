@@ -75,13 +75,14 @@ the winning `fm_setup.in` + training `.xyzf` into `alc0_dir`, then calls
 2. **Split** (skipped if `holdout_xyzf` given): `dataset-select
    stratified_holdout` at `holdout_fraction` (default 0.2) — the
    documented "holdout cross-validation" method.
-3. **Derive cutoffs**: `stages/_cutoffs.derive_pair_params` on the
-   training split (see [Cutoffs and lambdas](../concepts/cutoffs_and_lambdas.md)).
-4. **Sweep**: `sweep` over `order_grid` at the derived cutoffs, fixed
-   `alpha`/`algorithm`.
-5. **Choose**: lowest `rmse_force_kcal_mol_ang` among the sweep's
-   completed points.
-6. **Stabilize** (only if `stabilize` given): stage ALC-0 + `al-run`.
+3. **Search**: [`hyper-search`](hyper-search.md) on the split, locally,
+   with `order_grid` as its order grids. It picks cutoffs and λ from the
+   data (any cell shape), treats statistical ties and per-composition
+   regressions, and tunes α (and stress weights when stresses are fitted).
+   `search_stages` limits the stages (default: all).
+4. **Result**: the search's chosen model (`params`, `hyperparameters`,
+   `hyper_report`).
+5. **Stabilize** (only if `stabilize` given): stage ALC-0 + `al-run`.
 
 ## Flags
 
@@ -130,18 +131,9 @@ different HPC settings for each.
 
 ## Known limitations
 
-- Model choice uses `evaluate`'s holdout force RMSE, which mixed units until it was fixed (see
-  `docs/commands/evaluate.md`). Any `auto-build` result produced before the fix picked its
-  winner on an invalid metric; rerun it.
-- The order sweep runs at fixed first-shell many-body cutoffs with `lassolars` at α = 1e-5
-  (un-normalized columns). Measurements show both can leave 3-/4-body terms with little
-  effect; [`hyper-search`](hyper-search.md) searches those cutoffs and is where this is being
-  addressed.
-
-- Orthorhombic training boxes only (`io/rdf.py`'s scope, same as
-  `io/lammps_data.py`).
-- The 3-/4-body outer cutoff is one global value across all pairs (the
-  minimum of each pair's own derived value) — see
-  [Cutoffs and lambdas](../concepts/cutoffs_and_lambdas.md#s_maxim-outer-cutoff-documented-qualitatively-rdf-derived-here)
-  for why and the future per-pair extension.
-- `SPLITFI`-true / split-file A-matrices aren't produced by `fm-setup-gen` here (auto-build always generates a single-file basis) -- for a basis large enough to need DLARS' split-file path, build `fm_setup.in`/`amat-build` manually and use `sweep`/`solve` directly instead of `auto-build`.
+- Until 2026-10-03 this stage ran its own order sweep at cutoffs from an
+  orthorhombic-only derivation and picked the lowest raw holdout RMSE. It
+  now delegates fitting to `hyper-search`; results produced before then
+  used the weaker rule.
+- The search runs on the login node (or wherever `auto-build` runs). For
+  large datasets use `hyper-search --machine` directly.

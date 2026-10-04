@@ -17,7 +17,11 @@ shared filesystem (`/p/lustre2`) so Slurm jobs can read and write them.
 
 **Registry keys** (`--register key=path`, repeatable): `data_manifest`,
 `hyper_report`, `params`, `fm_setup`, `al_run`, `md_runs` (appends),
-`benchmark`, `usage`, `deploy`. Unregistered keys fall back to the standard
+`benchmark`, `usage`, `deploy`, and the validation artifacts `md_check`,
+`eos_check`, `fingerprint`, `quests`, `committee`, `learning_curve`,
+`evaluate` (a directory from `evaluate --plot`) and `al_status`. Each may be
+the JSON file or the stage's output directory; `study-report` finds the
+JSON and every PNG beneath it. Unregistered keys fall back to the standard
 layout (e.g. `02_fit/search/hyper_report.json`). `--status` output lists
 what is `missing`.
 

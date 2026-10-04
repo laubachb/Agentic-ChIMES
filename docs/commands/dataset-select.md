@@ -29,6 +29,10 @@ chimes-agent dataset-select --frames pool.xyzf --method stratified_holdout \
   returned as `holdout_indices` but isn't a meaningful test set on its own
   (FPS is normally used to subsample a *training* pool, e.g. for a
   retention-curve study, not to carve out held-out test data).
+- **`quests`** — greedy entropy-maximizing subset in QUESTS environment
+  space (each step adds the frame least covered by the current selection;
+  closest-contact frames first). Needs `pip install -e ".[quests]"`. See
+  [quests](quests.md).
 - **`random`** — plain seeded random sample.
 - **`stratified_holdout`** — bins frames by composition class (the set of
   elements present, e.g. `("C",)` vs `("C","H")`) and splits proportionally

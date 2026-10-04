@@ -35,10 +35,13 @@ Each stage is a small grid; later stages hold earlier choices fixed.
 | `2b` | `orders_2b` × `s_maxim_2b`, no many-body terms | always |
 | `3b` | `orders_3b` × `s_maxim_3b` (≤ 2-body cutoff) | it beats the 2-body model beyond the tie margin |
 | `3b_pairs` | per-pair 3-body cutoffs at each pair's own shell (two candidates) | tied with the global cutoff and cheaper in MD |
+| `smoothing` | TERSOFF 0.5 / 0.75 (`smoothings`) vs the current smoothing, same basis | tied or better (same MD cost) |
 | `4b` | `orders_4b` (2, 3) × `s_maxim_4b` (first-shell end, midway; ≤ 3-body cutoff) × `four_body_solvers` (default: the search solver only); `--four-body auto` runs it only if 3-body improved the score by ≥ `min_gain` | it beats the 3-body model beyond the tie margin |
 | `exclude` | leave-one-type-out over the model's 3-/4-body cluster types (`EXCLUDE` blocks), `exclude_rounds` (2) greedy rounds | removing the type(s) leaves the fit tied with both the current model and the model that entered the stage |
 | `lambda` | one scale factor on every pair's λ | it beats scale 1.0 by more than `tolerance` |
-| `refine` | `order_2b` ± 2 with many-body terms fixed | cheapest tied point |
+| `lambda_pairs` | one pair's λ at a time, ×0.9 / ×1.1 | tied or better |
+| `refine` | `order_2b` ± 2; cutoff midpoints between the chosen value and its grid neighbours | cheapest tied point |
+| `alpha` | `alphas` (1e-7 … 1e-3) on the chosen basis, LASSO/ridge solvers only | cheapest tied point (fewer nonzero coefficients win ties) |
 | `stress` | `stress_weights` (1, 3, 10, 30), only when fitting stresses | lowest holdout pressure error among weights tied on force/energy |
 
 Cutoff candidates come from the RDF shells (`hyper-analyze`); many-body
@@ -90,12 +93,31 @@ when energies matter more than forces, and compare the two with
   holdout frames jointly for both models, so frame-to-frame difficulty
   cancels; it separates consistent small differences that each model's own
   SE (~0.07-0.09 with 30 holdout frames) would hide.
+- **Per-composition guard**: a point counts as tied only if, in addition,
+  no composition group (e.g. Cu, Zr, Cu-Zr frames) is worse than in the
+  best point by more than max(`tolerance` × that group's error, the paired
+  SE on that group's frames). A pooled score can hide a damaged group: on
+  Cu-Zr, dropping two cross 3-body types cost pure Cu 60 % (0.090 → 0.145)
+  while the pooled error moved only 0.306 → 0.313, and the old rule
+  accepted it. With the guard, the search kept the CuZrZr type and found a
+  better model:
+
+  | | before the guard | with it |
+  |---|---|---|
+  | pooled error | 0.313 | 0.303 |
+  | pure Cu | 0.145 | 0.093 |
+  | energy, kcal/mol/atom | 0.854 | 0.737 |
+
+  Rejections appear as `group_regressions` in the stage tables, next to
+  each point's `by_composition`.
 - **Choice**: the cheapest point within its tie margin, by estimated MD
   cost per atom: for each body order n, (clusters within its cutoff) =
   (ρ·4/3·π·r³)^(n−1) with ρ the training set's median number density, times
   that body order's coefficient count. A slightly longer cutoff with far
   fewer coefficients can be cheaper (3-body order 4 at 7.0 Å costs about half
-  of order 6 at 6.33 Å on Cu-Zr). Each point reports `md_cost`.
+  of order 6 at 6.33 Å on Cu-Zr). Each point reports `md_cost`. The
+  coefficient counts are the **nonzero** ones: LASSO zeroes many, and
+  `deploy` removes them before MD (a Cu-Zr 4-body candidate kept 421 of 726).
 - **Budget**: points with more than `max_param_ratio` (0.5) coefficients per
   equation are reported, never chosen.
 - **Signal flag**: each fit reports the 3-/4-body column scale relative to
@@ -105,6 +127,69 @@ when energies matter more than forces, and compare the two with
 - **Runaway builds**: `--max-fit-seconds` (600) abandons a design-matrix
   build (many-body cutoffs on 1-2 Å-wide cells can take very long); the
   point is reported as `timeout`.
+
+## Cross-validation (`--cv-folds k`)
+
+With `k ≥ 2`, every point is scored by k-fold cross-validation over the
+training frames instead of the holdout. Held-out frames get row weight 0 in
+the point's design matrix (built once), each fold is a solve, and the
+held-out frames are scored; the per-frame rows feed the same tie rule and
+group guard. Folds are group-aware (correlated frames together) and
+stratified by composition; each pair's closest-contact frame stays in
+training. The external holdout is still evaluated and reported as
+`ext_holdout_*` (and in `cross_validation`).
+
+Why: with ~30 holdout frames the standard error is ~0.06 and most
+decisions are inside it. 4-fold CV on Cu-Zr scored 123 frames with SE 0.035.
+CV also exposes **variance**: the 6/4 3-body model at 7 Å had a holdout
+error of 0.31 but CV 0.66 (pure Cu 0.89), because its 3-body coefficients
+(on columns 10⁻² of the 2-body scale) change with every data subset. Treat
+a large holdout–CV disagreement as a finding about the model, not as noise.
+
+Cost: k extra solves per point (seconds each); no extra design-matrix
+builds.
+
+## Smoothing stage
+
+After the 4-body stage, the current basis is refitted with each entry of
+`smoothings` (default TERSOFF 0.5 and 0.75) and the result is accepted when
+tied or better: the cubic form shrinks many-body contributions (Lindsey
+2020), so this is the systematic version of the one-off comparison below.
+The chosen `fcuttyp` is in `hyper_choice.json` and later stages keep it.
+
+## Sensitivity profiles and `HYPER_REPORT.md`
+
+`hyper_report.json` now has `profiles`: for each setting, every fitted
+point that differs from the final choice in that setting alone (a
+one-dimensional sensitivity; a flat profile means the data cannot resolve
+the setting). Because the stages are greedy, a profile exists only for
+settings varied after the others were fixed (typically `alpha`, the stress
+weight, λ scales, the refine cutoffs); earlier settings are documented by
+their stage tables instead. `search/HYPER_REPORT.md` is generated with the data budget,
+the chosen model, accuracy by composition, every stage's top rows and
+decision, the profiles and the notes. See
+[How a model is chosen](../concepts/model_selection.md).
+
+## Regularization (`alpha` stage)
+
+α used to be fixed. On the Cu-Zr basis, forces were flat in α up to 1e-4,
+but the energy error ran from 0.78 (α ≤ 1e-6) to 1.12 kcal/mol/atom
+(α = 1e-2). The stage re-solves the chosen basis over `--alphas` and keeps
+the cheapest statistically tied result (with the group guard). It is
+cheap: one design matrix serves every α.
+
+## Memory and shared design matrices
+
+- Stages that change only the solve (`alpha`, `stress`, the 4-body solver
+  comparison) build each basis's design matrix once, keep it under
+  `amat/`, re-solve it, and delete it after the stage.
+- Parallel fits are capped by memory. The largest point of a batch runs
+  first, its matrix size is measured, and the worker count is set from the
+  memory available (the Slurm cgroup limit inside a job). One fit peaks at
+  ~20× the dense matrix size, because chimes_lsq.py parses text: 48 MB →
+  0.94 GB measured. When the cap applies, or one fit alone would not fit,
+  a note says so; for the latter, fit with `solve --algorithm dlars
+  --machine`.
 
 ## Per-pair 3-body cutoffs (`3b_pairs` stage)
 

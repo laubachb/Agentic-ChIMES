@@ -37,6 +37,13 @@ al-select = [
     "matplotlib>=3.5",
     "cycler>=0.11",
 ]
+plots = [
+    "matplotlib>=3.5",
+]
+quests = [
+    "quests>=2025.3",
+    "numba>=0.59",
+]
 
 [project.scripts]
 chimes-agent = "agentic_chimes.cli:main"

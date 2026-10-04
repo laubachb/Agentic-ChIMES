@@ -120,7 +120,8 @@ def row_frames(tags: list, natoms: list) -> list:
     return frames[: len(tags)]
 
 
-def build(work_dir, *, preset="uniform", overrides=None, cycle=0, frame_cycles=None, decay_cycles=None) -> dict:
+def build(work_dir, *, preset="uniform", overrides=None, cycle=0, frame_cycles=None, decay_cycles=None,
+          out_path=None) -> dict:
     work = Path(work_dir)
     rows = [ln.split() for ln in (work / "b-labeled.txt").read_text().splitlines() if ln.strip()]
     natoms = [float(x) for x in (work / "natoms.txt").read_text().split()]
@@ -145,7 +146,7 @@ def build(work_dir, *, preset="uniform", overrides=None, cycle=0, frame_cycles=N
         w *= np.array([decay_cycles / max(int(frame_cycles[f]), 1) for f in fidx])
         decay_note = f"rows of frames from cycle I scaled by {decay_cycles}/max(I,1)"
 
-    out = work / "weights.dat"
+    out = Path(out_path) if out_path else work / "weights.dat"
     np.savetxt(out, w, fmt="%.10g")
     kinds = [row_kind(t) for t in tags]
     summary = {}

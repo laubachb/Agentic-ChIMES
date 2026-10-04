@@ -63,3 +63,100 @@ def frame_elements_check(params_path, symbols) -> None:
     extra = sorted(set(symbols) - set(model_els))
     if extra:
         raise ValueError(f"structure contains {extra}, which the model {params_path} does not describe ({model_els})")
+
+
+# ------------------------------------------------------------------ penalty
+
+# chimes_lsq's documentation: add penalty parameters before MD; 1e5-1e6
+# kcal/mol/A^3 and 0.01-0.05 A are reasonable. Without these lines chimesFF
+# falls back to 1e4 and 0.01 A.
+DEFAULT_PENALTY_DIST = 0.02
+DEFAULT_PENALTY_SCALING = 1.0e5
+
+
+def penalty(params_path) -> dict:
+    """{"dist", "scaling", "explicit"}: what chimesFF will use for this file."""
+    dist, scaling = None, None
+    for ln in Path(params_path).read_text().splitlines():
+        if ln.startswith("PAIR CHEBYSHEV PENALTY DIST:"):
+            dist = float(ln.split()[-1])
+        elif ln.startswith("PAIR CHEBYSHEV PENALTY SCALING:"):
+            scaling = float(ln.split()[-1])
+    return {"dist": 0.01 if dist is None else dist, "scaling": 1.0e4 if scaling is None else scaling,
+            "explicit": dist is not None and scaling is not None}
+
+
+def set_penalty(src, dst, *, dist: float, scaling: float) -> Path:
+    """Copy params.txt with explicit penalty lines (placed after FCUT TYPE, where
+    chimes_lsq's documentation and al_driver put them)."""
+    lines = [ln for ln in Path(src).read_text().splitlines() if "PAIR CHEBYSHEV PENALTY" not in ln]
+    k = next((i for i, ln in enumerate(lines) if ln.startswith("FCUT TYPE:")), None)
+    if k is None:  # no FCUT TYPE (hand-edited file): before the coefficient blocks, still in chimesFF's header pass
+        k = next((i - 1 for i, ln in enumerate(lines)
+                  if ln.startswith(("PAIR CHEBYSHEV PARAMS", "PAIRTYPE PARAMS", "ENDFILE"))), None)
+    if k is None:
+        raise ValueError(f"{src}: no FCUT TYPE / PAIRTYPE PARAMS / ENDFILE line to place the penalty settings")
+    lines[k + 1:k + 1] = ["", f"PAIR CHEBYSHEV PENALTY DIST:    {float(dist)}", f"PAIR CHEBYSHEV PENALTY SCALING: {float(scaling)}"]
+    Path(dst).write_text("\n".join(lines) + "\n")
+    return Path(dst)
+
+
+# ------------------------------------------------------------------ coefficients
+
+def nonzero_by_body(params_path) -> dict:
+    """{"2b": n, "3b": n, "4b": n}: unique coefficients that are nonzero
+    (LASSO zeroes many; zeros still cost MD time unless the file is reduced)."""
+    counts = {"2b": 0, "3b": 0, "4b": 0}
+    section, seen = None, set()
+    for ln in Path(params_path).read_text().splitlines():
+        s = ln.strip()
+        if s.startswith("PAIRTYPE PARAMS:"):
+            section, block = "2b", s
+            continue
+        if s.startswith("TRIPLETTYPE PARAMS:"):
+            section, block = "3b", None
+            continue
+        if s.startswith(("QUADRUPLETYPE PARAMS:", "QUADRUPLETTYPE PARAMS:")):  # chimes_lsq spells it QUADRUPLETYPE
+            section, block = "4b", None
+            continue
+        if s.startswith("INDEX:") and section in ("3b", "4b"):
+            block = (section, s)
+            continue
+        if s.startswith(("TRIPMAPS", "QUADMAPS", "PAIRMAPS", "ENDFILE", "NO ENERGY")):
+            section = None
+            continue
+        t = s.split()
+        if section == "2b" and len(t) == 2 and t[0].isdigit():
+            if float(t[1]) != 0.0:
+                counts["2b"] += 1
+        elif section in ("3b", "4b") and len(t) >= (7 if section == "3b" else 10) and t[0].isdigit():
+            key = (block, t[-2])
+            if key not in seen:
+                seen.add(key)
+                if float(t[-1]) != 0.0:
+                    counts[section] += 1
+    return counts
+
+
+def reduce(params_path, dst) -> Path:
+    """Drop zeroed 3-/4-body parameters with chimes_lsq's post_proc_chimes_lsq.py.
+    Predictions are unchanged (checked to 0.0 on a Cu-Zr 4-body model, which
+    then evaluated 21% faster)."""
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    from .. import config
+
+    script = config.CHIMES_LSQ_ROOT / "src" / "post_proc_chimes_lsq.py"
+    if not script.is_file():
+        raise FileNotFoundError(f"{script} not found; run `chimes-agent setup --component codes`")
+    with tempfile.TemporaryDirectory() as td:
+        shutil.copy(params_path, Path(td) / "params.txt")
+        proc = subprocess.run([sys.executable, str(script), "params.txt"], cwd=td, capture_output=True, text=True)
+        out = Path(td) / "params.txt.reduced"
+        if proc.returncode != 0 or not out.is_file():
+            raise RuntimeError(f"post_proc_chimes_lsq.py failed: {(proc.stdout + proc.stderr)[-400:]}")
+        shutil.copy(out, dst)
+    return Path(dst)

@@ -111,6 +111,10 @@ Before recommending a model, get `chimes-fit-reviewer`'s verdict.
   tied runners-up, the user's temperatures, and DFT-MD reference frames if
   any exist. Its verdict is "use X", "choose X over Y", or "needs active
   learning" plus a first batch.
+- Before active learning, have the tuner run `learning-curve` on the chosen
+  basis: a plateau means new conditions (coverage) are needed, not more of
+  the same frames. The search itself should use `--cv-folds 4` on small
+  datasets.
 - For active learning, delegate to `chimes-active-learner` with the manifest,
   `hyper_choice.json`, the base QE settings and the labeling budget. Each
   round returns QE (and md-check) jobs for approval, then resumes. Resume the

@@ -92,9 +92,38 @@ def collect(root: Path) -> dict:
     if al_dir and Path(al_dir).is_dir():
         alcs = sorted(p.name for p in Path(al_dir).glob("ALC-*") if p.is_dir())
         al = {"dir": al_dir, "cycles": alcs, "driver_log": str(Path(al_dir) / "driver.log")}
+    extra = {}
+    for key in ("md_check", "eos_check", "fingerprint", "quests", "committee", "learning_curve", "al_status"):
+        path = study_stage.artifact(root, key)
+        if path and Path(path).is_file():
+            extra[key] = _load(path)
+        elif path and Path(path).is_dir():  # a stage output directory was registered: find its JSON
+            cand = {"md_check": "md_check.json", "eos_check": "eos_check.json", "fingerprint": "fingerprint.json",
+                    "quests": "quests.json", "committee": "committee.json", "learning_curve": "learning_curve.json",
+                    "al_status": "AL_STATUS.json"}[key]
+            for cand_path in (Path(path) / cand, Path(path) / "run" / cand):
+                if cand_path.is_file():
+                    extra[key] = _load(cand_path)
+                    break
+    evaluate_dir = study_stage.artifact(root, "evaluate")
+    figures = []
+    for key, src in (("evaluate", evaluate_dir), ("eos_check", study_stage.artifact(root, "eos_check")),
+                     ("learning_curve", study_stage.artifact(root, "learning_curve")), ("quests", study_stage.artifact(root, "quests")),
+                     ("md_check", study_stage.artifact(root, "md_check")), ("al_status", study_stage.artifact(root, "al_status"))):
+        if not src:
+            continue
+        base = Path(src) if Path(src).is_dir() else Path(src).parent
+        for png in sorted(base.rglob("*.png"))[:12]:
+            try:
+                figures.append({"section": key, "path": str(png), "rel": str(png.relative_to(root))})
+            except ValueError:
+                figures.append({"section": key, "path": str(png), "rel": str(png)})
+    deploy_facts = _load(Path(study_stage.artifact(root, "deploy") or "") / "model_facts.json") if study_stage.artifact(root, "deploy") else None
     texts = {}
     for name, p in (("study_md", root / "STUDY.md"), ("data_plan", root / "01_data" / "DATA_PLAN.md"),
-                    ("hyper_report_md", root / "02_fit" / "HYPER_REPORT.md")):
+                    ("hyper_report_md", root / "02_fit" / "HYPER_REPORT.md"),
+                    ("search_report_md", Path(study_stage.artifact(root, "hyper_report") or "").parent / "HYPER_REPORT.md"),
+                    ("md_report_md", root / "04_md" / "MD_REPORT.md"), ("al_log_md", root / "03_al" / "AL_LOG.md")):
         if p.is_file():
             texts[name] = p.read_text()[:20000]
     return {
@@ -106,11 +135,17 @@ def collect(root: Path) -> dict:
                  "n_train": None, "curation": {k: (curation or {}).get(k) for k in ("n_input", "n_removed", "selection")},
                  "removed_by_reason": {}},
         "fit": {"stages": [{k: st.get(k) for k in ("stage", "n_points", "reason", "skipped")} for st in (hyper or {}).get("stages", [])],
+                "profiles": (hyper or {}).get("profiles"), "cross_validation": (hyper or {}).get("cross_validation"),
+                "final": (hyper or {}).get("final"), "settings": (hyper or {}).get("settings"),
                 "exclusion_analysis": next((st.get("cluster_types") for st in (hyper or {}).get("stages", []) if st.get("stage") == "exclude"), None),
                 "four_body": next((st.get("four_body_gain_by_solver") for st in (hyper or {}).get("stages", []) if st.get("stage") == "4b"), None),
                 "n_fits": (hyper or {}).get("n_fits"), "notes": (hyper or {}).get("notes")},
         "model": {k: f.get(k) for k in ("hyperparameters", "accuracy", "params")},
+        "deployed": (deploy_facts or {}).get("deployed"),
         "active_learning": al,
+        "al_status": extra.get("al_status"),
+        "validation": {k: extra.get(k) for k in ("md_check", "eos_check", "fingerprint", "quests", "committee", "learning_curve")},
+        "figures": figures,
         "md_runs": md,
         "benchmark": f.get("cost"),
         "usage": f.get("development_cost"),
@@ -151,6 +186,13 @@ def render(facts: dict) -> str:
               f"| holdout force error (relative) | {_fmt(acc.get('holdout_relative_force_error'))} ± {_fmt(acc.get('holdout_relative_force_se'), 2)} |",
               f"| holdout energy RMSE | {_fmt(acc.get('holdout_rmse_energy_per_atom'))} kcal/mol/atom |",
               f"| coefficients | {acc.get('n_params')} |"]
+        if facts.get("deployed"):
+            dep = facts["deployed"]
+            L += [f"| deployed coefficients (nonzero) | {sum((dep.get('nonzero_coefficients') or {}).values())} |",
+                  f"| repulsive penalty | {dep.get('penalty', {}).get('dist')} Å, {dep.get('penalty', {}).get('scaling')} kcal/mol/Å³ |"]
+        bc = acc.get("by_composition") or (fit.get("final") or {}).get("by_composition")
+        if bc:
+            L += [f"| error by composition | {', '.join(f'{g} {_fmt(v)}' for g, v in bc.items())} |"]
         if facts.get("usage"):
             L += [f"| development cost | {_fmt(facts['usage'].get('total_cpu_hours'))} CPU-hours charged |"]
         if facts.get("benchmark") and facts["benchmark"].get("cost_model"):
@@ -174,6 +216,16 @@ def render(facts: dict) -> str:
         L += ["| stage | fits | decision |", "|---|---|---|"]
         L += [f"| {s['stage']} | {s.get('n_points') or ('skipped' if s.get('skipped') else '')} | {s.get('reason') or ''} |" for s in fit["stages"]]
         L += [""]
+    cvf = fit.get("cross_validation")
+    if cvf:
+        L += [f"Scoring used {cvf.get('folds')}-fold cross-validation over {cvf.get('n_frames')} training frames; the external "
+              f"holdout gave a relative force error of {_fmt(cvf.get('ext_holdout_relative_force_error'))}.", ""]
+    prof = fit.get("profiles") or {}
+    if prof:
+        L += ["Sensitivity of the holdout error to each setting (others fixed at the chosen value; `*` = chosen):", ""]
+        for key, rows in prof.items():
+            L += [f"- {key}: " + ", ".join(f"{r['value']}{'*' if r['chosen'] else ''} → {_fmt(r['holdout_relative_force_error'])}" for r in rows)]
+        L += [""]
     if fit.get("exclusion_analysis"):
         L += ["Cluster-type exclusion analysis (score change when removed; positive = needed):", "",
               "| type | instances | coefficients saved | score change | excluded |", "|---|---|---|---|---|"]
@@ -186,10 +238,67 @@ def render(facts: dict) -> str:
         L += ["```json", json.dumps({k: hp.get(k) for k in ("order", "pair_cutoffs", "morse_lambda", "special_maxim_3b",
                                                               "special_maxim_4b", "exclude_3b", "exclude_4b", "nlayers",
                                                               "algorithm", "alpha")}, indent=1), "```", ""]
+    v = facts.get("validation") or {}
+    lc = v.get("learning_curve")
+    if lc:
+        L += ["### Data sufficiency (learning curve)", "",
+              f"Verdict: **{lc.get('verdict')}**. " + " ".join(lc.get("notes") or []), "",
+              "| training frames | relative force error | energy RMSE |", "|---|---|---|"]
+        L += [f"| {c['n_frames']} | {_fmt(c['relative_force_error'])} | {_fmt(c.get('rmse_energy_per_atom'))} |" for c in lc.get("curve") or []]
+        L += [""]
     L += ["## 4. Active learning", ""]
-    L += ([f"Cycles: {', '.join(facts['active_learning']['cycles'])} (`{facts['active_learning']['dir']}`).", "",
-           N("what active learning changed")] if facts.get("active_learning") else ["Not run in this study.", ""])
+    als = facts.get("al_status")
+    if als and als.get("rounds"):
+        L += [f"Verdict from `al-status`: **{als.get('verdict')}** ({'; '.join(als.get('reasons') or [])}).", "",
+              "| round | training frames | added | holdout force error | MD stable | inside inner cutoff | novel frames |",
+              "|---|---|---|---|---|---|---|"]
+        L += [f"| {r['round']} | {r.get('n_train', '')} | {r.get('n_added', '')} | {_fmt(r.get('holdout_relative_force_error'))} | "
+              f"{r.get('md_stable', '')} | {r.get('md_below_inner_cutoff', '')} | {r.get('novel_fraction_frames', '')} |" for r in als["rounds"]]
+        L += ["", N("what active learning changed and why it stopped")]
+    elif facts.get("active_learning"):
+        L += [f"Cycles: {', '.join(facts['active_learning']['cycles'])} (`{facts['active_learning']['dir']}`).", "",
+              N("what active learning changed")]
+    else:
+        L += ["Not run in this study.", ""]
+    q, fpv, cm = v.get("quests"), v.get("fingerprint"), v.get("committee")
+    if q or fpv or cm:
+        L += ["", "### Coverage and uncertainty", ""]
+        if q:
+            L += [f"- QUESTS: training-set entropy {q.get('entropy')} nats, diversity {q.get('diversity')}; "
+                  + (f"{_fmt(q.get('fraction_novel_frames'))} of candidate frames novel; adding them all would add "
+                     f"{q.get('entropy_gain_if_all_added')} nats" if q.get('n_candidate_frames') else "")
+                  + ("; entropy saturated" if q.get("entropy_saturated") else "; entropy not saturated" if q.get("entropy_saturated") is False else "")]
+        if fpv and fpv.get("sets"):
+            L += [f"- cluster-graph fingerprint: D² = {_fmt(fpv['sets'].get('D2'), 1)} vs critical {_fmt(fpv['sets'].get('critical'), 1)} "
+                  f"({'distinguishable' if fpv['sets'].get('distinguishable') else 'indistinguishable'}); "
+                  f"fraction novel {_fmt((fpv.get('novelty') or {}).get('fraction_novel'))}"]
+        if cm and cm.get("force_spread_kcal_mol_ang"):
+            L += [f"- committee ({cm.get('n_models')} members): median force spread {_fmt(cm['force_spread_kcal_mol_ang'].get('median'))} "
+                  f"kcal/mol/Å, max {_fmt(cm['force_spread_kcal_mol_ang'].get('max'))}"]
+        L += [""]
     L += ["", "## 5. MD validation", ""]
+    mc = v.get("md_check")
+    if mc and mc.get("runs"):
+        L += [f"`md-check`: {mc.get('structure_natoms')} atoms, {mc.get('nsteps')} steps at {mc.get('timestep_fs')} fs.", "",
+              "| model | T (K) | stable | equilibrated | mean T | inside inner cutoff | close-contact fraction | RDF distance |",
+              "|---|---|---|---|---|---|---|---|"]
+        for r in mc["runs"]:
+            rd = r.get("rdf_distance")
+            L += [f"| {Path(r['params']).parent.name} | {r['temperature']:.0f} | {'yes' if r.get('stable') else 'NO: ' + ', '.join(r.get('instability') or [])} | "
+                  f"{r.get('equilibrated')} | {r.get('mean_temperature_second_half')} | {r.get('below_inner_cutoff_frames')} | "
+                  f"{r.get('close_contact_fraction')} | {_fmt(sum(rd.values()) / len(rd)) if rd else '-'} |"]
+        L += ["", "Penalty: " + ", ".join(f"{Path(m['params']).parent.name} {m.get('penalty')}" for m in mc.get("models") or []), ""]
+    eos = v.get("eos_check")
+    if eos:
+        e, el = eos.get("eos") or {}, eos.get("elastic") or {}
+        L += ["### Equation of state and elastic constants", "",
+              f"- {eos.get('composition')}: V0 {e.get('V0_A3_per_atom')} Å³/atom, B0 {e.get('B0_GPa')} GPa (B0' {e.get('B0_prime')}); "
+              f"elastic bulk modulus {el.get('bulk_modulus_voigt_GPa')} GPa; Born stable: {el.get('born_stable')}"
+              + (f"; cubic C11/C12/C44 = {el['cubic']['C11']}/{el['cubic']['C12']}/{el['cubic']['C44']} GPa" if el.get("cubic") else "")]
+        if eos.get("reference_pressure"):
+            rp = eos["reference_pressure"]
+            L += [f"- pressure vs DFT on {rp.get('n_frames')} frames: RMSE {rp.get('rmse_GPa')} GPa, bias {rp.get('bias_GPa')} GPa"]
+        L += ["", N("do the mechanical properties agree with DFT/experiment for this structure?"), ""]
     if facts["md_runs"]:
         L += ["| run | ensemble | atoms | simulated ps | mean T (K) | energy change (kcal/mol/atom) | stable |",
               "|---|---|---|---|---|---|---|"]
@@ -225,6 +334,10 @@ def render(facts: dict) -> str:
         L += ["Search notes:", ""] + [f"- {n}" for n in fit["notes"]] + [""]
     if facts.get("deploy"):
         L += [f"Deployed model and model card: `{facts['deploy']}`.", ""]
+    if facts.get("figures"):
+        L += ["## Figures", ""]
+        for fig in facts["figures"]:
+            L += [f"![{fig['section']}: {Path(fig['path']).stem}]({fig['rel']})", ""]
     return "\n".join(L)
 
 

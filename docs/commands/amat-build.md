@@ -37,6 +37,29 @@ If `--output-dir` is omitted, output lands next to the `fm_setup.in` file.
 - `--queue`, `--walltime-hours`, `--nodes`, `--ntasks-per-node` (HPC only)
 - `--dry-run` (generic flag, HPC only) — render the sbatch script, don't submit
 
+## Pre-flight check
+
+Before chimes_lsq runs, `fm_setup.in` is checked against its trajectory.
+chimes_lsq itself crashes rather than explaining: `NFRAMES` larger than the
+file made it segfault (exit −11, plus a core file).
+
+**Errors** stop the run:
+
+- missing trajectory;
+- `NFRAMES` > frames in the file;
+- elements outside `ATOM TYPES`;
+- an outer cutoff ≥ |lattice vector| × (2·`NLAYERS`+1)/2 (chimes_lsq's own
+  rule);
+- `FITSTRS`/`FITENER` without stresses/energies.
+
+**Warnings** come back as `preflight_warnings`:
+
+- `NFRAMES` smaller than the file;
+- an inner cutoff above the closest sampled contact, or more than 0.1 Å
+  below it.
+
+Native codes run with core dumps disabled.
+
 ## Output
 
 ```json

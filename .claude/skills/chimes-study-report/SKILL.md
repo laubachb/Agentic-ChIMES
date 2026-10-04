@@ -21,6 +21,15 @@ what not to trust yet. Every number must come from the study's artifacts.
    `REPORT.md` with every table filled and `<!-- NARRATIVE: ... -->`
    placeholders.
 
+Register everything the report can use, so its sections fill:
+`md_check`, `eos_check`, `fingerprint`, `quests`, `committee`,
+`learning_curve`, `evaluate` (a directory from `evaluate --plot`) and
+`al_status`. The generated report then has data-sufficiency, coverage and
+uncertainty, MD validation, equation-of-state and active-learning-round
+sections, plus a Figures section with every PNG found under those
+directories. `search/HYPER_REPORT.md` and `03_al/AL_STATUS.md` are read as
+source texts.
+
 ## 2. Write the narrative
 
 Replace each placeholder with prose. Keep the generated tables. Read, in

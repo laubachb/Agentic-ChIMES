@@ -47,6 +47,15 @@ Per model, `models` summarizes:
 - `max_close_contact_fraction`
 - `mean_rdf_distance`
 
+## Penalty
+
+Each candidate runs with an explicit repulsive penalty below its inner
+cutoff: the model's own lines if it has them, else what `deploy` writes
+(0.02 Å, 1e5 kcal/mol/Å³), or `--penalty-dist` / `--penalty-scaling`.
+So MD is validated in the form the model will be used. On Cu-Zr at
+1200 K, chimesFF's implicit default (0.01 Å, 1e4) let 20 of 81 frames
+sample distances inside the inner cutoff; the explicit default, 2.
+
 ## Choosing between candidates
 
 1. Drop models that are unstable at any temperature that matters.
@@ -64,6 +73,11 @@ up to `--harvest-other` (20) others to `harvest.xyzf`. This follows the
 parallel active-learning recipe of Lindsey et al. (2025, 2026). Label it
 with `qe-relabel` (same QE settings as the base set), curate it together
 with the base data, and refit.
+
+## Plots
+
+Per run: `temperature.png`, `energy.png` (potential energy per atom) and
+`rdf.png` (partial RDFs of the second half). `--no-plot` skips them.
 
 ## Output
 

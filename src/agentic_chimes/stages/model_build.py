@@ -28,9 +28,9 @@ SCHEMA = {
         "algorithm": {
             "type": "string",
             "enum": ["svd", "fast_svd", "ridge", "fast_ridge", "ridgecv", "lasso", "lassolars", "dlars", "dlasso"],
-            "default": "svd",
+            "default": "lassolars",
         },
-        "alpha": {"type": "number", "default": 1.0e-4},
+        "alpha": {"type": "number", "default": 1.0e-5},
         "eps": {"type": "number", "default": 1.0e-5},
         "weights": {"type": ["string", "null"], "description": "Per-row weights file (see the weights stage)."},
         "stress_weight": {"type": ["number", "null"], "description": "Override the stress-row weight of weights_preset (default preset uniform). Published values (100-250) assume large cells; measure it (hyper-search's stress stage)."},
@@ -50,8 +50,8 @@ SCHEMA = {
 def add_arguments(parser) -> None:
     parser.add_argument("--fm-setup-in", dest="fm_setup_in", default=None)
     parser.add_argument("--chimes-lsq-bin", dest="chimes_lsq_bin", default=None)
-    parser.add_argument("--algorithm", default="svd")
-    parser.add_argument("--alpha", type=float, default=1.0e-4)
+    parser.add_argument("--algorithm", default="lassolars")
+    parser.add_argument("--alpha", type=float, default=1.0e-5)
     parser.add_argument("--eps", type=float, default=1.0e-5)
     parser.add_argument("--weights", default=None)
     parser.add_argument("--weights-preset", dest="weights_preset", default=None)
@@ -90,7 +90,7 @@ def run(args) -> dict:
 
     work_dir = Path(amat_result["work_dir"])
 
-    algorithm = getattr(args, "algorithm", "svd") or "svd"
+    algorithm = getattr(args, "algorithm", "lassolars") or "lassolars"
     if amat_result.get("split") and algorithm not in ("dlars", "dlasso"):
         raise NotImplementedError(
             "fm_setup.in has SPLITFI true, which chimes_lsq only produces for the DLARS/DLASSO "
@@ -125,7 +125,7 @@ def run(args) -> dict:
             map=amat_result["ff_groups_map"],
             dim=dim,
             algorithm=algorithm,
-            alpha=getattr(args, "alpha", 1.0e-4),
+            alpha=getattr(args, "alpha", 1.0e-5),
             eps=getattr(args, "eps", 1.0e-5),
             weights=weights_file,
             folds=getattr(args, "folds", 4),

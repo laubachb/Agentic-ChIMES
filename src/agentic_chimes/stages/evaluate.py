@@ -31,6 +31,7 @@ SCHEMA = {
         "params": {"type": "array", "items": {"type": "string"}, "description": ">1 entry = committee mode"},
         "holdout_xyzf": {"type": "string"},
         "max_frames": {"type": ["integer", "null"]},
+        "plot": {"type": "boolean", "default": False, "description": "With --output-dir: write parity_forces.png (model vs reference force components, by element) and error_by_composition.png."},
         "per_frame": {"type": "boolean", "default": False, "description": "Also return per-frame force squared-error sums (for bootstrap uncertainty)."},
     },
 }
@@ -41,6 +42,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--holdout-xyzf", dest="holdout_xyzf", default=None)
     parser.add_argument("--max-frames", dest="max_frames", type=int, default=None)
     parser.add_argument("--per-frame", dest="per_frame", action="store_true", default=False)
+    parser.add_argument("--plot", action="store_true", default=False)
 
 
 def max_outer_cutoff(params_path) -> float:
@@ -122,6 +124,49 @@ def _cell_vectors(frame):
     return [lx, 0.0, 0.0], [0.0, ly, 0.0], [0.0, 0.0, lz]
 
 
+def composition_label(frame) -> str:
+    """Composition class of a frame: its element set, e.g. "Cu-Zr"."""
+    return "-".join(sorted(set(frame.symbols)))
+
+
+def group_breakdown(frame_rows, groups, elem_rows) -> dict:
+    """Relative force error per composition class and per element, plus the
+    worst frames. A pooled error can hide the group that matters: on Cu-Zr the
+    alloy frames were 3x worse than pure Cu at a pooled 0.31."""
+    import math
+
+    by_comp = {}
+    for (err, ref, n), g in zip(frame_rows, groups):
+        acc = by_comp.setdefault(g, [0.0, 0.0, 0])
+        acc[0] += err
+        acc[1] += ref
+        acc[2] += 1
+    rel = [math.sqrt(e / r) if r else None for e, r, _ in frame_rows]
+    worst = sorted((i for i in range(len(rel)) if rel[i] is not None), key=lambda i: -rel[i])[:5]
+    return {
+        "by_composition": {g: {"relative_force_error": round(math.sqrt(e / r), 4) if r else None, "n_frames": k}
+                           for g, (e, r, k) in sorted(by_comp.items())},
+        "by_element": {el: {"relative_force_error": round(math.sqrt(e / r), 4) if r else None, "n_atoms": n // 3}
+                       for el, (e, r, n) in sorted(elem_rows.items())},
+        "worst_frames": [{"frame": i, "composition": groups[i], "relative_force_error": round(rel[i], 4)} for i in worst],
+    }
+
+
+def check_frames_against_models(frames, params_paths) -> None:
+    """Refuse frames with elements a model does not describe, before the
+    calculator sees them: chimes_calculator calls exit() inside the C library
+    on an unknown atom type, which ended the process silently with status 0."""
+    from ..io.params import model_types
+
+    for p in params_paths:
+        known = {s for s, _ in model_types(p)}
+        bad = [(i, sorted(set(f.symbols) - known)) for i, f in enumerate(frames) if set(f.symbols) - known]
+        if bad:
+            shown = ", ".join(f"frame {i}: {els}" for i, els in bad[:5])
+            raise ValueError(f"{len(bad)} frame(s) contain elements the model {p} does not describe ({shown}"
+                             f"{', ...' if len(bad) > 5 else ''}); model types: {sorted(known)}")
+
+
 def _load_wrapper():
     lib_path = config.resolve_component("chimescalc_lib")
     api_path = config.CHIMES_CALCULATOR_ROOT / "serial_interface" / "api" / "chimescalc_serial_py.py"
@@ -132,17 +177,14 @@ def _load_wrapper():
     return mod
 
 
-def run(args) -> dict:
-    params_paths = args.params
-    if not params_paths:
-        raise ValueError("evaluate requires at least one --params (or 'params' in --json-in)")
-    if not args.holdout_xyzf:
-        raise ValueError("evaluate requires --holdout-xyzf (or 'holdout_xyzf' in --json-in)")
-
-    frames = xyzf_io.read_xyzf(args.holdout_xyzf)
-    if getattr(args, "max_frames", None):
-        frames = frames[: args.max_frames]
-
+def evaluate_frames(frames, params_paths, *, per_frame: bool = False, predictions: bool = False) -> dict:
+    """Score in-memory frames against one or more models. Everything `run`
+    reports, for callers (cross-validation, learning curves, al-status) that
+    should not write temporary .xyzf files. With `predictions`, per-atom
+    predicted/reference force components and element labels are returned
+    too (for parity plots)."""
+    check_frames_against_models(frames, params_paths)
+    groups = [composition_label(f) for f in frames]
     wrapper = _load_wrapper()
     instances = []
     for rank, params_path in enumerate(params_paths):
@@ -150,7 +192,6 @@ def run(args) -> dict:
         wrapper.set_chimes_instance(ptr, small=False)
         wrapper.init_chimes_instance(ptr, params_path, rank)
         instances.append(ptr)
-
     n_models = len(instances)
     force_sqerr = [0.0] * n_models
     force_n = [0] * n_models
@@ -162,6 +203,10 @@ def run(args) -> dict:
     energy_sqerr = [0.0] * n_models
     energy_n = [0] * n_models
     per_frame_energy = [[] for _ in range(n_models)]
+    pred_rows = [[] for _ in range(n_models)]  # with predictions: (predicted, reference, element) per force component
+    frame_e_err = [[] for _ in range(n_models)]  # per frame: energy error per atom (None without a reference energy)
+    frame_p_err = [[] for _ in range(n_models)]  # per frame: pressure error, GPa (None without a reference stress)
+    elem_rows = [dict() for _ in range(n_models)]  # element -> [sq error, ref sq, n components]
     stress_sqerr = [0.0] * n_models
     pressure_sqerr = [0.0] * n_models
     stress_n = [0] * n_models
@@ -182,13 +227,23 @@ def run(args) -> dict:
                     stress_sqerr[mi] += sum((p - r) ** 2 for p, r in zip(pred_stress, frame.stress))
                     pressure_sqerr[mi] += (sum(pred_stress[:3]) / 3 - sum(frame.stress[:3]) / 3) ** 2
                     stress_n[mi] += 1
+                    frame_p_err[mi].append(sum(pred_stress[:3]) / 3 - sum(frame.stress[:3]) / 3)
+                else:
+                    frame_p_err[mi].append(None)
                 # .xyzf forces are hartree/bohr; chimes_calculator returns kcal/mol/A
                 f_err = f_ref = f_abs = 0.0
-                for (pfx, pfy, pfz), ref in zip(pred_forces, frame.forces):
+                for sym, (pfx, pfy, pfz), ref in zip(frame.symbols, pred_forces, frame.forces):
                     rfx, rfy, rfz = (units.hartree_per_bohr_to_kcal_per_mol_ang(c) for c in ref)
-                    f_err += (pfx - rfx) ** 2 + (pfy - rfy) ** 2 + (pfz - rfz) ** 2
+                    e_atom = (pfx - rfx) ** 2 + (pfy - rfy) ** 2 + (pfz - rfz) ** 2
+                    f_err += e_atom
                     f_ref += rfx**2 + rfy**2 + rfz**2
                     f_abs += abs(rfx) + abs(rfy) + abs(rfz)
+                    if predictions:
+                        pred_rows[mi].extend(((pfx, rfx, sym), (pfy, rfy, sym), (pfz, rfz, sym)))
+                    er = elem_rows[mi].setdefault(sym, [0.0, 0.0, 0])
+                    er[0] += e_atom
+                    er[1] += rfx**2 + rfy**2 + rfz**2
+                    er[2] += 3
                 force_sqerr[mi] += f_err
                 force_n[mi] += 3 * frame.natoms
                 frame_rows[mi].append([f_err, f_ref, 3 * frame.natoms])
@@ -201,6 +256,9 @@ def run(args) -> dict:
                     energy_sqerr[mi] += (energy - frame.energy) ** 2
                     energy_pa_sqerr[mi] += ((energy - frame.energy) / frame.natoms) ** 2
                     energy_n[mi] += 1
+                    frame_e_err[mi].append((energy - frame.energy) / frame.natoms)
+                else:
+                    frame_e_err[mi].append(None)
     finally:
         for ptr in instances:
             wrapper.chimes_close_instance(ptr)
@@ -227,8 +285,14 @@ def run(args) -> dict:
                 "n_frames_below_inner_cutoff": below[mi],
             }
         )
-        if getattr(args, "per_frame", False):
+        results[-1].update(group_breakdown(frame_rows[mi], groups, elem_rows[mi]))
+        if per_frame:
             results[-1]["per_frame_force"] = frame_rows[mi]  # [sq error sum, reference sq sum, n components]
+            results[-1]["per_frame_group"] = groups
+            results[-1]["per_frame_energy_err_per_atom"] = frame_e_err[mi]
+            results[-1]["per_frame_pressure_err_gpa"] = frame_p_err[mi]
+        if predictions:
+            results[-1]["predictions"] = pred_rows[mi]
 
     below_note = [f"{r['params']}: {r['n_frames_below_inner_cutoff']} holdout frame(s) have contacts inside the model's "
                   "inner cutoff (penalty region); their errors dominate the RMSE. Put the closest contacts in training "
@@ -247,3 +311,37 @@ def run(args) -> dict:
 
     return {"n_frames": len(frames), "n_models": n_models, "reference_force_rms_kcal_mol_ang": ref_force_rms,
             "results": results, "committee_spread": committee_spread, **({"warnings": below_note} if below_note else {})}
+
+
+def run(args) -> dict:
+    params_paths = args.params
+    if not params_paths:
+        raise ValueError("evaluate requires at least one --params (or 'params' in --json-in)")
+    if not args.holdout_xyzf:
+        raise ValueError("evaluate requires --holdout-xyzf (or 'holdout_xyzf' in --json-in)")
+
+    frames = xyzf_io.read_xyzf(args.holdout_xyzf)
+    if getattr(args, "max_frames", None):
+        frames = frames[: args.max_frames]
+    plot = bool(getattr(args, "plot", False)) and getattr(args, "output_dir", None)
+    out = evaluate_frames(frames, params_paths, per_frame=bool(getattr(args, "per_frame", False)), predictions=plot)
+    if plot:
+        from ..io import fs, plots
+
+        d = fs.ensure_dir(Path(args.output_dir))
+        figs = []
+        for mi, r in enumerate(out["results"]):
+            rows = r.pop("predictions", None) or []
+            if rows:
+                tag = f"_{mi}" if len(out["results"]) > 1 else ""
+                figs.append(plots.parity([p for p, _, _ in rows], [q for _, q, _ in rows], d / f"parity_forces{tag}.png",
+                                         labels=[e for _, _, e in rows], title="Force components: model vs reference"))
+                comp = {g: v["relative_force_error"] for g, v in (r.get("by_composition") or {}).items()}
+                if comp:
+                    figs.append(plots.bars(comp, d / f"error_by_composition{tag}.png", ylabel="relative force error",
+                                           title="Holdout error by composition"))
+        out["plots"] = [f for f in figs if f]
+    elif plot is False:
+        for r in out["results"]:
+            r.pop("predictions", None)
+    return out

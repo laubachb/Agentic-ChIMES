@@ -30,10 +30,10 @@ Claude creates the study (`chimes-agent study --init`), writes the plan into
 | Phase | Agent | You're typically asked | You receive |
 |---|---|---|---|
 | Data | `chimes-data-curator` | keep open-data labels or relabel with QE? approve the QE job | `01_data/DATA_PLAN.md`, curated train/holdout, coverage per element pair |
-| Hyperparameters | `chimes-hyperparameter-tuner` | approve the search job (fits, cores, walltime) | chosen cutoffs/λ/orders/exclusions with reasons, `HYPER_REPORT.md` |
+| Hyperparameters | `chimes-hyperparameter-tuner` | approve the search job (fits, cores, walltime) | chosen cutoffs/λ/orders/smoothing/α with reasons; cross-validated errors by composition; sensitivity profiles; a learning-curve verdict (more data would / would not help); `HYPER_REPORT.md` |
 | Model check | `chimes-fit-reviewer` | nothing | an independent verdict: trustworthy / caveats / do not use |
-| Active learning | (skill) | approve al_driver launch | a stabilized model |
-| MD validation | (lammps-run) | which conditions to test | stability of runs at your temperatures |
+| MD validation | `chimes-md-validator` | which conditions to test; a DFT reference if you have one | stability, close contacts, RDFs, equation of state and elastic constants, coverage of the MD configurations (fingerprint, QUESTS), `MD_REPORT.md` |
+| Active learning | `chimes-active-learner` | approve each round's QE job; the labeling budget | per round: the batch and why (`batch.json`), errors on the fixed holdout, `AL_STATUS.md` with a CONVERGED/CONTINUE verdict |
 | Benchmark | `chimes-benchmark` | approve the scaling job; your production sizes | cost model, sizing table, CPU-hours used so far |
 | Deploy + report | `deploy`, `chimes-report-writer` | audience of the report | `06_deploy/MODEL_CARD.md`, `REPORT.md` |
 

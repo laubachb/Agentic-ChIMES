@@ -207,7 +207,10 @@ def run(args) -> dict:
     if nprocs > 1:
         cmd = ["mpirun", "-n", str(nprocs)] + cmd
 
-    from ..hpc.local import singleton_env
+    from ..hpc.local import no_core_dumps, singleton_env
+
+
+    no_core_dumps()
 
     proc = subprocess.run(cmd, cwd=str(work_dir), capture_output=True, text=True,
                           env=singleton_env() if nprocs == 1 else None)

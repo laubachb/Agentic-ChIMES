@@ -21,7 +21,7 @@ the default body orders come from a model's params.txt.
 from __future__ import annotations
 
 import json
-from concurrent.futures import ProcessPoolExecutor
+from ..io.pool import process_pool
 from pathlib import Path
 
 import numpy as np
@@ -99,7 +99,7 @@ def _subsample(frames, cap):
 def _fingerprints(frames, params, orders, max_clusters, workers):
     tasks = [(f, params, orders, max_clusters) for f in frames]
     if workers > 1 and len(tasks) > 1:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        with process_pool(workers) as pool:
             res = list(pool.map(_one, tasks))
     else:
         res = [_one(t) for t in tasks]
@@ -144,7 +144,9 @@ def run(args) -> dict:
     cap = getattr(args, "max_frames", 500)
     max_clusters = getattr(args, "max_clusters", 5000) or 5000
     alpha = getattr(args, "alpha", 0.1) or 0.1
-    workers = max(1, getattr(args, "workers", 1) or 1)
+    from .quests_stage import available_cpus
+
+    workers = max(1, min(getattr(args, "workers", 1) or 1, available_cpus()))
     out = Path(getattr(args, "output_dir", None) or ".")
     fs.ensure_dir(out)
 

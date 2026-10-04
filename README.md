@@ -136,10 +136,10 @@ A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
 | Phase | Commands |
 |---|---|
 | Study | `study` (create / register / status), `usage` (CPU-hours), `study-report` |
-| Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `fingerprint`, `dataset-select`, `qe-relabel` |
-| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate` |
-| Active learning | `al-select`, `al-merge`, `al-run` |
-| MD, performance, deployment | `lammps-run`, `md-check`, `benchmark`, `deploy` |
+| Data | `data-search`, `data-fetch`, `data-generate`, `data-curate`, `fingerprint`, `quests`, `dataset-select`, `qe-converge`, `qe-relabel` |
+| Hyperparameters & fit | `hyper-analyze`, `hyper-search`, `learning-curve`, `fm-setup-gen`, `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate` |
+| Active learning | `al-batch`, `al-select`, `al-merge`, `al-status`, `al-run` |
+| MD, performance, deployment | `lammps-run`, `md-check`, `eos-check`, `committee`, `benchmark`, `deploy` |
 | Infrastructure | `setup`, `doctor`, `submit` |
 
 Reference for each: [docs/commands/](docs/commands/index.md).
@@ -160,7 +160,8 @@ Reference for each: [docs/commands/](docs/commands/index.md).
   and MPI from your PATH) or copy a profile. See
   docs/concepts/machine_profiles.md.
 - Run `chimes-agent doctor --machine <m>` after setup; set `CHIMES_ACCOUNT`
-  for the machine profiles.
+  for the machine profiles. Optional extras: `[quests]` (QUESTS coverage and
+  selection) and `[plots]` (figures in reports).
 
 Known gaps, bugs and the roadmap:
 [docs/development/assessment.md](docs/development/assessment.md). The

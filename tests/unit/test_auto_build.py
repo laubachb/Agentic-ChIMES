@@ -61,6 +61,7 @@ def _base_args(**overrides):
         fitstrs="false",
         max_frames=None,
         stabilize=None,
+        search_stages=["2b", "3b"],
         dry_run=False,
         output_dir=None,
     )
@@ -75,21 +76,20 @@ def test_end_to_end_against_real_fixture(tmp_path):
     assert Path(result["params"]).is_file()
     assert "ENDFILE" in Path(result["params"]).read_text()
     assert result["chosen"]["status"] == "done"
-    assert result["chosen"]["rmse_force_kcal_mol_ang"] > 0
+    assert result["chosen"]["holdout_relative_force_error"] > 0
 
-    # cutoffs were actually data-driven, not left as defaults
-    cutoffs = result["cutoffs"]["pairs"]
-    assert set(cutoffs) == {"C-C", "C-H", "H-H"}
-    for pair in cutoffs.values():
-        assert pair["s_minim"] > 0
-        assert pair["s_maxim_2b"] > pair["s_minim"]
+    # cutoffs and lambdas were data-driven (hyper-search's analysis), for every pair
+    hp = result["hyperparameters"]
+    assert set(hp["pair_cutoffs"]) == {"C-C", "C-H", "H-H"}
+    for s_minim, s_maxim in hp["pair_cutoffs"].values():
+        assert 0 < s_minim < s_maxim
 
     # split actually happened and both sets are non-trivial
     assert result["trace"]["split"]["n_selected"] > 0
     assert result["trace"]["split"]["n_holdout"] > 0
 
-    # the sweep actually swept: 2 x 2 x 1 = 4 points
-    assert result["trace"]["sweep"]["n_points"] == 4
+    # the full, inspectable search report sits next to the pick
+    assert Path(result["hyper_report"]).is_file()
 
 
 @pytest.mark.skipif(not _toolchain_available(), reason="chimes_lsq/chimescalc not built; run `chimes-agent setup`")

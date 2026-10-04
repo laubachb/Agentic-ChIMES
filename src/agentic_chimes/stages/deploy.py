@@ -29,6 +29,9 @@ SCHEMA = {
         "study": {"type": "string"},
         "model_name": {"type": ["string", "null"]},
         "output": {"type": ["string", "null"], "description": "Default <study>/06_deploy."},
+        "penalty_dist": {"type": "number", "default": 0.02, "description": "Å above the inner cutoff where the repulsive penalty starts (chimes_lsq docs: 0.01-0.05)."},
+        "penalty_scaling": {"type": "number", "default": 1.0e5, "description": "Penalty prefactor, kcal/mol/Å³ (chimes_lsq docs: 1e5-1e6). Without explicit lines chimesFF uses 1e4."},
+        "reduce": {"type": "boolean", "default": True, "description": "Drop zeroed 3-/4-body coefficients (post_proc_chimes_lsq.py; predictions unchanged)."},
     },
 }
 
@@ -37,6 +40,9 @@ def add_arguments(parser) -> None:
     parser.add_argument("--study", default=None)
     parser.add_argument("--model-name", dest="model_name", default=None)
     parser.add_argument("--output", default=None)
+    parser.add_argument("--penalty-dist", dest="penalty_dist", type=float, default=0.02)
+    parser.add_argument("--penalty-scaling", dest="penalty_scaling", type=float, default=1.0e5)
+    parser.add_argument("--no-reduce", dest="reduce", action="store_false", default=True)
 
 
 def _load(path):
@@ -104,7 +110,12 @@ def model_card(name: str, f: dict) -> str:
               "| Morse λ (Å) | " + ", ".join(f"{p} {v}" for p, v in hp["morse_lambda"].items()) + " |",
               f"| excluded 3-body types | {', '.join(' '.join(t) for t in hp.get('exclude_3b') or []) or 'none'} |",
               f"| excluded 4-body types | {', '.join(' '.join(t) for t in hp.get('exclude_4b') or []) or 'none'} |",
-              f"| coefficients | {acc.get('n_params')} |", ""]
+              f"| coefficients | {acc.get('n_params')} fitted"
+              + (f"; {sum(f['deployed']['nonzero_coefficients'].values())} nonzero in the deployed file"
+                 if f.get("deployed") else "") + " |",
+              *([f"| repulsive penalty | onset {f['deployed']['penalty']['dist']} Å above the inner cutoff, "
+                 f"prefactor {f['deployed']['penalty']['scaling']:g} kcal/mol/Å³ |"] if f.get("deployed") else []),
+              ""]
     L += ["## Accuracy (holdout)", ""]
     if acc:
         L += [f"- force RMSE {_fmt(acc.get('holdout_rmse_force'))} kcal/mol/Å; relative to the reference forces "
@@ -169,7 +180,24 @@ def run(args) -> dict:
         raise ValueError("no final params.txt registered (study --register params=...)")
     out = Path(getattr(args, "output", None) or root / "06_deploy")
     fs.ensure_dir(out)
-    shutil.copy(facts["params"], out / "params.txt")
+    # MD-ready: zeroed coefficients removed, penalty explicit (chimes_lsq docs: add it before MD)
+    from ..io import params as params_io
+
+    src = Path(facts["params"])
+    staged = out / ".params.staged.txt"
+    if getattr(args, "reduce", True):
+        try:
+            params_io.reduce(src, staged)
+        except (RuntimeError, FileNotFoundError) as exc:
+            facts["gaps"].append(f"coefficient reduction skipped: {exc}")
+            shutil.copy(src, staged)
+    else:
+        shutil.copy(src, staged)
+    params_io.set_penalty(staged, out / "params.txt", dist=getattr(args, "penalty_dist", 0.02),
+                          scaling=getattr(args, "penalty_scaling", 1.0e5))
+    staged.unlink(missing_ok=True)
+    facts["deployed"] = {"nonzero_coefficients": params_io.nonzero_by_body(out / "params.txt"),
+                         "penalty": params_io.penalty(out / "params.txt"), "reduced": bool(getattr(args, "reduce", True))}
     if facts.get("fm_setup") and Path(facts["fm_setup"]).is_file():
         shutil.copy(facts["fm_setup"], out / "fm_setup.in")
     (out / "in.lammps.example").write_text(_render_input("md", "structure.data", "params.txt", temperature=300.0,

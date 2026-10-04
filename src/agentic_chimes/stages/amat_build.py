@@ -90,9 +90,19 @@ def run(args) -> dict:
     fs.ensure_dir(work_dir)
     log_path = work_dir / "fm_setup.log"
 
+    from . import _preflight
+
+    pre = _preflight.check(fm_setup_in)
+    if pre["errors"] and getattr(args, "dry_run", False) and getattr(args, "machine", None):
+        pass  # a dry run previews: problems are reported in its result instead
+    elif pre["errors"]:
+        raise ValueError(f"{fm_setup_in} does not match its training data: " + "; ".join(pre["errors"]))
+
     machine = getattr(args, "machine", None)
     if not machine:
-        from ..hpc.local import singleton_env
+        from ..hpc.local import no_core_dumps, singleton_env
+
+        no_core_dumps()
 
         timeout_s = getattr(args, "timeout_s", None)
         try:
@@ -124,10 +134,16 @@ def run(args) -> dict:
             dry_run=bool(getattr(args, "dry_run", False)),
         )
         if handle.dry_run:
-            return {"work_dir": str(work_dir), "dry_run": True, "job_file": str(handle.job_file)}
+            out = {"work_dir": str(work_dir), "dry_run": True, "job_file": str(handle.job_file)}
+            if pre["errors"]:
+                out["preflight_errors"] = pre["errors"]  # the real run would stop on these
+            return out
 
         hpc.poll_job(profile, handle, verbose=True)
         if not log_path.is_file():
             raise RuntimeError(f"job {handle.job_id} finished but {log_path} was never written -- check Slurm output")
 
-    return {"work_dir": str(work_dir), **_collect_outputs(work_dir, log_path)}
+    out = {"work_dir": str(work_dir), **_collect_outputs(work_dir, log_path)}
+    if pre["warnings"]:
+        out["preflight_warnings"] = pre["warnings"]
+    return out

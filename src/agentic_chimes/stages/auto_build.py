@@ -1,17 +1,16 @@
 """End-to-end ChIMES model-building pipeline: unlabeled configs -> QE
 labeling -> data-driven cutoff/lambda determination (implementing
 documented ChIMES guidance -- see docs/concepts/cutoffs_and_lambdas.md
-and stages/_cutoffs.py) -> a 2b/3b/4b polynomial-order sweep at those
-fixed cutoffs -> one "optimal" model (lowest holdout force RMSE -- the
-standard MLIP metric, and the ChIMES docs' own recommended way to pick
-order via holdout cross-validation) -> optionally, stage the winning fit
+and stages/hyper_analyze.py) -> one model chosen by `hyper-search` (data-driven cutoffs and
+lambdas, noise-aware ties, per-composition guard, alpha and stress stages)
+-> optionally, stage the winning fit
 as ALC-0 for al_driver and launch it (al-run) to stabilize the model via
 further active-learning cycles.
 
 Unlike model-build/sweep (which deliberately stay hands-off on
 hyperparameter judgment calls), this pipeline is explicitly asked to
-return one answer -- it still reports the full sweep table alongside the
-pick, so the choice stays inspectable, not a black box.
+return one answer -- the full hyper_report.json (every stage table and the
+reason for each choice) stays alongside the pick.
 
 Blocking/synchronous: runs the whole pipeline top to bottom in one
 process, polling the QE Slurm job to completion (hpc.poll_job) rather
@@ -31,12 +30,12 @@ from pathlib import Path
 
 from .. import hpc, machines
 from ..io import xyzf as xyzf_io
-from . import _cutoffs, al_run, dataset_select, fm_setup_gen, qe_relabel, sweep
+from . import _cutoffs, al_run, dataset_select, qe_relabel
 from ._compose import ns
 from ..io import fs
 
 NAME = "auto-build"
-SUMMARY = "Unlabeled configs -> QE labeling -> data-driven cutoffs -> order sweep -> optimal model (-> optional AL stabilization)."
+SUMMARY = "Unlabeled configs -> QE labeling -> hyper-search (cutoffs, lambdas, orders, alpha) -> one model (-> optional AL stabilization)."
 SUPPORTS_DRY_RUN = True
 
 DEFAULT_ORDER_GRID = {"2": [10, 12, 14], "3": [5, 7, 9], "4": [None, 2, 3]}
@@ -65,7 +64,8 @@ SCHEMA = {
         "holdout_xyzf": {"type": ["string", "null"], "description": "If omitted, carved from the labeled pool via dataset-select stratified_holdout."},
         "holdout_fraction": {"type": "number", "default": 0.2},
         "split_seed": {"type": "integer", "default": 42},
-        "s_minim_delta": {"type": "number", "default": _cutoffs.DEFAULT_S_MINIM_DELTA},
+        "search_stages": {"type": ["array", "null"], "items": {"type": "string"}, "description": "hyper-search stages to run (default: all of hyper-search's defaults)."},
+        "s_minim_delta": {"type": "number", "default": _cutoffs.DEFAULT_S_MINIM_DELTA, "description": "Unused since auto-build delegates to hyper-search (which places inner cutoffs 0.02 A below the closest contact)."},
         "s_maxim_2b_default": {"type": "number", "default": _cutoffs.DOCUMENTED_S_MAXIM_2B_DEFAULT},
         "nlayers": {"type": "integer", "default": 1},
         "order_grid": {"type": "object", "default": DEFAULT_ORDER_GRID, "description": '{"2":[...], "3":[...], "4":[null or int, ...]}'},
@@ -103,6 +103,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--holdout-xyzf", dest="holdout_xyzf", default=None)
     parser.add_argument("--holdout-fraction", dest="holdout_fraction", type=float, default=0.2)
     parser.add_argument("--split-seed", dest="split_seed", type=int, default=42)
+    parser.add_argument("--search-stages", dest="search_stages", type=lambda v: [x for x in v.split(",") if x], default=None)
     parser.add_argument("--s-minim-delta", dest="s_minim_delta", type=float, default=_cutoffs.DEFAULT_S_MINIM_DELTA)
     parser.add_argument("--s-maxim-2b-default", dest="s_maxim_2b_default", type=float, default=_cutoffs.DOCUMENTED_S_MAXIM_2B_DEFAULT)
     parser.add_argument("--nlayers", type=int, default=1)
@@ -206,75 +207,38 @@ def run(args) -> dict:
     else:
         train_xyzf = labeled_xyzf
 
-    # ---- Phase 3: derive cutoffs / Morse lambda from the training data ----
-    train_frames = xyzf_io.read_xyzf(train_xyzf)
-    cutoffs = _cutoffs.derive_pair_params(
-        train_frames,
-        elements,
-        s_minim_delta=a.get("s_minim_delta", _cutoffs.DEFAULT_S_MINIM_DELTA),
-        s_maxim_2b_default=a.get("s_maxim_2b_default", _cutoffs.DOCUMENTED_S_MAXIM_2B_DEFAULT),
-        nlayers=a.get("nlayers", 1),
-    )
-    trace["cutoffs"] = cutoffs
-
-    pairs = cutoffs["pairs"]
-    pair_cutoffs = {k: [v["s_minim"], v["s_maxim_2b"]] for k, v in pairs.items()}
-    morse_lambda = {k: v["morse_lambda"] for k, v in pairs.items()}
-    global_maxim_3b = min(v["s_maxim_3b"] for v in pairs.values())
+    # ---- Phases 3-4: hyperparameters and fit, via hyper-search ----
+    # (formerly an order sweep at orthorhombic-only derived cutoffs, picking the lowest raw holdout RMSE;
+    # hyper-search derives cutoffs/lambdas from the data for any cell, treats statistical ties and per-composition
+    # regressions properly, and tunes alpha and stress weights)
+    from . import hyper_search
 
     order_grid = a.get("order_grid") or DEFAULT_ORDER_GRID
-    order_4b_values = order_grid.get("4", DEFAULT_ORDER_GRID["4"])
-    need_4b = any(v for v in order_4b_values)
-    global_maxim_4b = min(v["s_maxim_4b"] for v in pairs.values()) if need_4b else None
-
-    # ---- Phase 4: 2b/3b/4b polynomial-order sweep at fixed cutoffs ----
-    sweep_dir = out_dir / "sweep"
-    sweep_base = {
-        "trjfile": str(Path(train_xyzf).resolve()),
-        "nframes": len(train_frames),
-        "elements": elements,
-        "masses": masses,
-        "charges": a.get("charges"),
-        "pair_cutoffs": pair_cutoffs,
-        "morse_lambda": morse_lambda,
-        "special_maxim_3b": global_maxim_3b,
-        "special_maxim_4b": global_maxim_4b,
-        "fitener": a.get("fitener", "false"),
-        "fitstrs": a.get("fitstrs", "false"),
-        "algorithm": a.get("algorithm", "lassolars"),
-        "alpha": a.get("alpha", 1.0e-5),
-        "max_frames": a.get("max_frames"),
-        # reuses the same machine/queue/walltime as QE labeling (the common
-        # single-cluster-campaign case); drop to `sweep`/`solve` directly if
-        # you need the solve step on a different machine or walltime than QE
-        "machine": a.get("machine") if a.get("algorithm") in ("dlars", "dlasso") else None,
-        "queue": a.get("queue", "batch"),
-        "walltime_hours": a.get("walltime_hours", 2.0),
-        "nodes": a.get("nodes", 1),
-        "ntasks_per_node": a.get("ntasks_per_node"),
-        "poll_interval_s": a.get("poll_interval_s", 60),
-    }
-    sweep_grid = {
-        "order_2b": order_grid.get("2", DEFAULT_ORDER_GRID["2"]),
-        "order_3b": order_grid.get("3", DEFAULT_ORDER_GRID["3"]),
-        "order_4b": order_4b_values,
-    }
-    sweep_result = sweep.run(ns(base=sweep_base, grid=sweep_grid, holdout_xyzf=holdout_xyzf, output_dir=str(sweep_dir)))
-    trace["sweep"] = sweep_result
-
-    if sweep_result["n_done"] == 0:
-        raise RuntimeError("every sweep grid point failed -- see trace.sweep.results for per-point errors")
-
-    best_idx = sweep_result["best_by"]["rmse_force"]
-    chosen = next(r for r in sweep_result["results"] if r["index"] == best_idx)
+    o4 = [v for v in order_grid.get("4", DEFAULT_ORDER_GRID["4"]) if v]
+    search_dir = out_dir / "search"
+    search = hyper_search.run(ns(
+        data_manifest=None, train_xyzf=str(Path(train_xyzf).resolve()), holdout_xyzf=str(Path(holdout_xyzf).resolve()),
+        elements=elements, masses=masses, hyper_analysis=None, stages=a.get("search_stages"), four_body="auto" if o4 else "off",
+        orders_2b=[v for v in order_grid.get("2", DEFAULT_ORDER_GRID["2"]) if v],
+        orders_3b=[v for v in order_grid.get("3", DEFAULT_ORDER_GRID["3"]) if v], orders_4b=o4 or None,
+        s_maxim_2b=None, s_maxim_3b=None, s_maxim_4b=None, lambda_scales=None,
+        objective="auto", energy_weight=0.1, tolerance=0.03, min_gain=0.05, min_signal=1e-9, exclude_inert=False,
+        max_param_ratio=0.5, fitener=(str(a.get("fitener", "false")).lower() == "true") if a.get("fitener") is not None else None,
+        fitstrs=a.get("fitstrs"), algorithm=a.get("algorithm", "lassolars"), alpha=a.get("alpha", 1.0e-5),
+        workers=a.get("workers", 4), machine=None, max_fit_seconds=a.get("max_fit_seconds", 600), prefer="cheaper",
+        output_dir=str(search_dir)))
+    trace["search"] = {k: search.get(k) for k in ("hyper_report", "final", "hyperparameters", "notes")}
+    chosen = search["final"]
+    winning_fm_setup = Path(search["fm_setup_in"])
 
     result = {
         "trace": trace,
         "train_xyzf": train_xyzf,
         "holdout_xyzf": holdout_xyzf,
-        "cutoffs": cutoffs,
         "chosen": chosen,
-        "params": chosen["params"],
+        "hyperparameters": search["hyperparameters"],
+        "params": search["params"],
+        "hyper_report": search["hyper_report"],
     }
 
     # ---- Phase 5: optional AL stabilization ----
@@ -282,7 +246,6 @@ def run(args) -> dict:
     if stabilize:
         alc0_dir = Path(stabilize["alc0_dir"])
         fs.ensure_dir(alc0_dir)
-        winning_fm_setup = sweep_dir / f"point_{best_idx:04d}" / "fm_setup.in"
         shutil.copy(winning_fm_setup, alc0_dir / "fm_setup.in")
         shutil.copy(train_xyzf, alc0_dir / Path(train_xyzf).name)
 

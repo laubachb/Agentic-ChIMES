@@ -182,6 +182,130 @@ def config_key(cfg: dict) -> str:
     return hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:12]
 
 
+def scaled_lambdas(cfg: dict) -> dict:
+    """Morse lambdas after the global scale and any per-pair scales."""
+    pairs = cfg.get("lambda_scale_pairs") or {}
+    return {p: round(cfg["morse_lambda"][p] * cfg.get("lambda_scale", 1.0) * pairs.get(p, 1.0), 4) for p in cfg["morse_lambda"]}
+
+
+def cv_assignment(frames, k: int, seed: int = 0) -> list:
+    """Fold id per training frame for k-fold cross-validation, or -1 for frames
+    that always stay in training. Correlated frames (same group, see
+    dataset_select.correlated_groups) share a fold; each pair's closest-contact
+    frame is never held out (the inner cutoff is set from it); groups are
+    dealt round-robin within each composition class so folds are stratified."""
+    import random
+
+    from .dataset_select import _composition_class, closest_contact_frames, correlated_groups
+
+    groups = correlated_groups(frames)
+    protected = {groups[i] for i in closest_contact_frames(frames)}
+    rng = random.Random(seed)
+    fold_of_group = {}
+    by_class = {}
+    for i, g in enumerate(groups):
+        if g not in protected:
+            by_class.setdefault(_composition_class(frames[i]), set()).add(g)
+    for cls in sorted(by_class):
+        gids = sorted(by_class[cls])
+        rng.shuffle(gids)
+        for n, g in enumerate(gids):
+            fold_of_group[g] = n % k
+    return [fold_of_group.get(g, -1) for g in groups]
+
+
+def cross_validate(amat_dir, point_dir, task: dict, cfg: dict, base_weights_path, solve_fn) -> dict:
+    """k-fold CV from one design matrix: rows of held-out frames get weight 0
+    (equivalent to leaving them out of the fit), each fold is solved, and the
+    held-out frames are scored. Returns pooled per-frame rows in training-frame
+    order plus pooled metrics; the fold solve directories are removed."""
+    import shutil
+
+    from . import evaluate
+    from .weights import row_frames
+
+    k = int(task["cv_folds"])
+    assign = task["cv_assign"]
+    frames = task["train_frames"]
+    tags = [ln.split()[0] for ln in (amat_dir / "b-labeled.txt").read_text().splitlines() if ln.strip()]
+    natoms = [float(x) for x in (amat_dir / "natoms.txt").read_text().split()]
+    rows_frame = np.asarray(row_frames(tags, natoms))
+    base_w = np.loadtxt(base_weights_path) if base_weights_path else np.ones(len(tags))
+    per_frame = {}
+    for fold in range(k):
+        held = [i for i, f in enumerate(assign) if f == fold]
+        if not held:
+            continue
+        mask = np.isin(rows_frame, held)
+        wpath = point_dir / f"weights.cv{fold}.dat"
+        np.savetxt(wpath, np.where(mask, 0.0, base_w), fmt="%.10g")
+        d = point_dir / f"cv{fold}"
+        try:
+            params = solve_fn(str(wpath), str(d))
+            ev = evaluate.evaluate_frames([frames[i] for i in held], [params], per_frame=True)["results"][0]
+            for j, i in enumerate(held):
+                per_frame[i] = (ev["per_frame_force"][j], ev["per_frame_group"][j],
+                                ev["per_frame_energy_err_per_atom"][j], ev["per_frame_pressure_err_gpa"][j])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+            wpath.unlink(missing_ok=True)
+    order = sorted(per_frame)
+    rows = [per_frame[i][0] for i in order]
+    groups = [per_frame[i][1] for i in order]
+    # per-frame relative errors: the pooled RMS is dominated by frames the held-out fit extrapolates on
+    frame_rel = [float(np.sqrt(r[0] / r[1])) if r[1] else float("nan") for r in rows]
+    fragile = [i for i, e in zip(order, frame_rel) if e > 1.0]
+    e_err = [per_frame[i][2] for i in order if per_frame[i][2] is not None]
+    p_err = [per_frame[i][3] for i in order if per_frame[i][3] is not None]
+    err = sum(r[0] for r in rows)
+    ref = sum(r[1] for r in rows)
+    return {
+        "cv_folds": k, "cv_n_frames": len(rows),
+        "cv_relative_force_error": float(np.sqrt(err / ref)) if ref else None,
+        "cv_rmse_energy_per_atom": float(np.sqrt(np.mean(np.square(e_err)))) if e_err else None,
+        "cv_rmse_pressure_gpa": float(np.sqrt(np.mean(np.square(p_err)))) if p_err else None,
+        "cv_per_frame_force": rows, "cv_frame_groups": groups,
+        "cv_median_frame_error": float(np.nanmedian(frame_rel)) if frame_rel else None,
+        "cv_fragile_frames": fragile,  # training frames mispredicted (relative error > 1) when held out
+        "cv_by_composition": evaluate.group_breakdown(rows, groups, {})["by_composition"],
+    }
+
+
+def profiles(all_results: dict, final_cfg: dict, keys=("order_2b", "order_3b", "order_4b", "s_maxim_2b", "s_maxim_3b",
+                                                       "s_maxim_4b", "lambda_scale", "alpha", "stress_weight", "fcuttyp",
+                                                       "weights_preset", "solver")) -> dict:
+    """One-dimensional sensitivity profiles: for each hyperparameter, every
+    fitted point that differs from the final configuration in that key only."""
+    def norm(c):
+        return {k: v for k, v in c.items() if v not in (None, 0, [], {}, 1.0, "CUBIC", "uniform") or k in ("order_2b", "s_maxim_2b")}
+
+    base = norm(final_cfg)
+    out = {}
+    for key in keys:
+        rows = []
+        for r in all_results.values():
+            if r.get("status") != "done":
+                continue
+            c = norm(r["cfg"])
+            if {k: v for k, v in c.items() if k != key} != {k: v for k, v in base.items() if k != key}:
+                continue
+            rows.append({"value": r["cfg"].get(key, final_cfg.get(key)), "score": r.get("score"),
+                         "holdout_relative_force_error": r.get("holdout_relative_force_error"),
+                         "holdout_rmse_energy_per_atom": r.get("holdout_rmse_energy_per_atom"),
+                         "n_params": r.get("n_params"), "md_cost": r.get("md_cost"),
+                         "chosen": r["cfg"].get(key, final_cfg.get(key)) == final_cfg.get(key)})
+        # one row per value (the chosen point and an explicit re-fit at the same value are the same evidence)
+        by_value = {}
+        for row in rows:
+            k = repr(row["value"])
+            if k not in by_value or row["chosen"]:
+                by_value[k] = row
+        rows = list(by_value.values())
+        if len(rows) > 1:
+            out[key] = sorted(rows, key=lambda x: (str(type(x["value"])), x["value"] if x["value"] is not None else -1))
+    return out
+
+
 def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinnest: float, out_dir: str):
     from ._compose import ns
 
@@ -195,7 +319,7 @@ def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinne
         trjfile=str(Path(train_xyzf).resolve()), nframes=n_train, elements=cfg["elements"], masses=masses,
         charges=None, order=order, cheby_range=[-1, 1],
         pair_cutoffs={p: [cfg["s_minim"][p], cfg["s_maxim_2b"]] for p in cfg["s_minim"]},
-        morse_lambda={p: round(cfg["morse_lambda"][p] * cfg.get("lambda_scale", 1.0), 4) for p in cfg["morse_lambda"]},
+        morse_lambda=scaled_lambdas(cfg),
         default_s_minim=1.0, default_s_maxim=cfg["s_maxim_2b"], default_morse_lambda=1.5, s_delta=0.01,
         wraptrj=True, nlayers=max(1, nlayers_required(cutoff, thinnest)), fitcoul=False, fitstrs=str(cfg.get("fitstrs") or "false"),
         fitener="true" if cfg.get("fitener") else "false", fitpovr=False, chbtype="MORSE", fcuttyp=cfg.get("fcuttyp", "CUBIC"),
@@ -207,12 +331,18 @@ def build_fm_args(cfg: dict, train_xyzf: str, n_train: int, masses: dict, thinne
     )
 
 
-def _train_force_error(work_dir: Path):
+def params_nonzero(params_path) -> dict:
+    from ..io.params import nonzero_by_body
+
+    return nonzero_by_body(params_path)
+
+
+def _train_force_error(work_dir: Path, solve_dir: Path | None = None):
     """Training-set force RMSE from chimes_lsq's own force.txt vs b.txt
-    (free: no extra evaluation)."""
+    (free: no extra evaluation). b lives with the A-matrix, force.txt with the solve."""
     labels = [ln.split()[0] for ln in (work_dir / "b-labeled.txt").read_text().splitlines()]
     b = np.loadtxt(work_dir / "b.txt")
-    f = np.loadtxt(work_dir / "force.txt")
+    f = np.loadtxt((solve_dir or work_dir) / "force.txt")
     is_force = np.array([lab != "+1" and "s_" not in lab for lab in labels])  # not energy, not stress rows
     diff = (b - f)[is_force]
     ref = b[is_force]
@@ -309,6 +439,27 @@ def cluster_coverage(work_dir: Path) -> dict:
     return out
 
 
+def group_regressions(r: dict, best: dict, tolerance: float, min_frames: int = 3) -> list:
+    """Composition groups where `r` is worse than `best` beyond max(tolerance x
+    best's group error, the paired bootstrap SE on that group's frames)."""
+    ga, gb = r.get("holdout_frame_groups"), best.get("holdout_frame_groups")
+    ra, rb = r.get("holdout_per_frame_force"), best.get("holdout_per_frame_force")
+    if not (ga and gb and ra and rb) or ga != gb or len(set(ga)) < 2:
+        return []
+    out = []
+    for g in sorted(set(ga)):
+        idx = [i for i, x in enumerate(ga) if x == g]
+        if len(idx) < min_frames:
+            continue
+        a = np.asarray([ra[i] for i in idx], dtype=float)
+        b = np.asarray([rb[i] for i in idx], dtype=float)
+        ea, eb = np.sqrt(a[:, 0].sum() / a[:, 1].sum()), np.sqrt(b[:, 0].sum() / b[:, 1].sum())
+        se = paired_se(a.tolist(), b.tolist())
+        if ea - eb > max(tolerance * eb, se):
+            out.append({"group": g, "error": round(float(ea), 4), "best": round(float(eb), 4), "margin": round(float(max(tolerance * eb, se)), 4)})
+    return out
+
+
 def paired_se(rows_a, rows_b, n_boot: int = 500, seed: int = 0) -> float:
     """Standard error of (relative force error of a) - (of b) when both were
     scored on the same holdout frames: resample frames jointly. Frame-to-frame
@@ -339,6 +490,7 @@ def fit_context(task: dict) -> str:
         "solver": cfg.get("solver", task["algorithm"]),
         "alpha": cfg.get("alpha", task["alpha"]),
         "masses": task.get("masses"),
+        "cv": [task.get("cv_folds") or 0, task.get("cv_seed") or 0],
     }
     return hashlib.sha256(json.dumps(ctx, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
@@ -348,7 +500,7 @@ def run_point(task: dict) -> dict:
     directory, so re-running a search resumes instead of refitting; the cache
     is used only when `fit_context` (data, solver, alpha) also matches."""
     from ._compose import ns
-    from . import evaluate, fm_setup_gen, model_build
+    from . import amat_build, evaluate, fm_setup_gen, solve
 
     cfg, point_dir = task["cfg"], Path(task["point_dir"])
     context = fit_context(task)
@@ -363,27 +515,52 @@ def run_point(task: dict) -> dict:
     fs.ensure_dir(point_dir)
     result = {"key": config_key(cfg), "cfg": cfg, "point_dir": str(point_dir), "context": context}
     try:
-        fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
-                                            task["thinnest"], str(point_dir)))
-        mb = model_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None, weights_preset=cfg.get("weights_preset"),
-                                stress_weight=cfg.get("stress_weight"),
-                                algorithm=cfg.get("solver", task["algorithm"]), alpha=cfg.get("alpha", task["alpha"]), eps=1e-5, weights=None, folds=4, normalize=False, machine=None,
-                                queue="batch", walltime_hours=1.0, nodes=1, ntasks_per_node=None, poll_interval_s=60,
-                                timeout_s=task.get("timeout_s"), output_dir=str(point_dir)))
-        work = Path(mb["work_dir"])
-        n_params, n_rows = (int(x) for x in (work / "dim.txt").read_text().split()[:2])
-        tr_rmse, tr_rel = _train_force_error(work)
-        signal = body_order_signal(work)
-        coverage = cluster_coverage(work)
-        ev = evaluate.run(ns(params=[mb["params"]], holdout_xyzf=task["holdout_xyzf"], max_frames=None, per_frame=True))
+        # The design matrix depends on the basis, not on the solve. With task["amat_dir"], it is built once
+        # there and kept, and solve-only variants (solver, alpha, stress weight, weights preset) re-solve
+        # from it instead of rebuilding.
+        amat_dir = Path(task["amat_dir"]) if task.get("amat_dir") else point_dir
+        info_path = amat_dir / "amat_info.json"
+        if not (task.get("amat_dir") and (amat_dir / "A.txt").is_file() and atomic.read_json(info_path)):
+            fs.ensure_dir(amat_dir)
+            fm = fm_setup_gen.run(build_fm_args(cfg, task["train_xyzf"], task["n_train"], task["masses"],
+                                                task["thinnest"], str(amat_dir)))
+            amat_build.run(ns(fm_setup_in=fm["fm_setup_in"], chimes_lsq_bin=None, machine=None, queue="batch",
+                              walltime_hours=1.0, nodes=1, ntasks_per_node=None, dry_run=False,
+                              timeout_s=task.get("timeout_s"), output_dir=str(amat_dir)))
+            atomic.write_json(info_path, {"fm_setup_in": fm["fm_setup_in"], "nlayers": fm["params"]["nlayers"]})
+        info = atomic.read_json(info_path) or {}
+        weights_path = None
+        if (cfg.get("weights_preset") and cfg["weights_preset"] != "uniform") or cfg.get("stress_weight") is not None:
+            from . import weights as weights_stage
+
+            over = {"stress": ["A", [float(cfg["stress_weight"])]]} if cfg.get("stress_weight") is not None else None
+            weights_path = weights_stage.build(amat_dir, preset=cfg.get("weights_preset") or "uniform", overrides=over,
+                                               out_path=point_dir / "weights.dat")["weights"]
+        def solve_with(wpath, out_dir):
+            return solve.run(ns(A=str(amat_dir / "A.txt"), b=str(amat_dir / "b.txt"), header=str(amat_dir / "params.header"),
+                                map=str(amat_dir / "ff_groups.map"), dim=str(amat_dir / "dim.txt"),
+                                algorithm=cfg.get("solver", task["algorithm"]), alpha=cfg.get("alpha", task["alpha"]), eps=1e-5,
+                                weights=wpath, folds=4, normalize=False, split_files=False, machine=None, queue="batch",
+                                walltime_hours=1.0, nodes=1, ntasks_per_node=None, poll_interval_s=60, dry_run=False,
+                                output_dir=str(out_dir)))
+
+        sv = solve_with(weights_path, point_dir)
+        cv = None
+        if task.get("cv_folds") and task.get("cv_assign"):
+            cv = cross_validate(amat_dir, point_dir, task, cfg, weights_path, lambda w, d: solve_with(w, d)["params"])
+        n_params, n_rows = (int(x) for x in (amat_dir / "dim.txt").read_text().split()[:2])
+        tr_rmse, tr_rel = _train_force_error(amat_dir, point_dir)
+        signal = body_order_signal(amat_dir)
+        coverage = cluster_coverage(amat_dir)
+        ev = evaluate.run(ns(params=[sv["params"]], holdout_xyzf=task["holdout_xyzf"], max_frames=None, per_frame=True))
         h = ev["results"][0]
         result.update({
             "status": "done",
-            "params": mb["params"],
+            "params": sv["params"],
             "solver": cfg.get("solver", task["algorithm"]),
-            "solver_alpha": mb["solve"].get("cv_alpha", cfg.get("alpha", task["alpha"])),
-            "fm_setup_in": fm["fm_setup_in"],
-            "nlayers": fm["params"]["nlayers"],
+            "solver_alpha": sv.get("cv_alpha", cfg.get("alpha", task["alpha"])),
+            "fm_setup_in": info.get("fm_setup_in"),
+            "nlayers": info.get("nlayers"),
             "n_params": n_params,
             "n_equations": n_rows,
             "train_rmse_force": tr_rmse,
@@ -396,11 +573,30 @@ def run_point(task: dict) -> dict:
             "holdout_rmse_stress_gpa": h.get("rmse_stress_gpa"),
             "holdout_relative_force_se": bootstrap_se(h["per_frame_force"]),
             "holdout_per_frame_force": h["per_frame_force"],
+            "holdout_frame_groups": h.get("per_frame_group"),
+            "holdout_by_composition": h.get("by_composition"),
             "signal": signal,
+            "nonzero": params_nonzero(sv["params"]),
             "cluster_coverage": coverage,
         })
-        for bulky in ("A.txt",):
-            (work / bulky).unlink(missing_ok=True)  # the design matrix is the big file; params/force/b stay
+        if cv:
+            # Selection runs on the CV estimate (k times the frames of a holdout); the external holdout stays reported.
+            result.update({
+                "ext_holdout_relative_force_error": result["holdout_relative_force_error"],
+                "ext_holdout_rmse_energy_per_atom": result["holdout_rmse_energy_per_atom"],
+                "ext_holdout_by_composition": result["holdout_by_composition"],
+                "holdout_relative_force_error": cv["cv_relative_force_error"],
+                "holdout_rmse_energy_per_atom": cv["cv_rmse_energy_per_atom"],
+                "holdout_rmse_pressure_gpa": cv["cv_rmse_pressure_gpa"],
+                "holdout_relative_force_se": bootstrap_se(cv["cv_per_frame_force"]),
+                "holdout_per_frame_force": cv["cv_per_frame_force"],
+                "holdout_frame_groups": cv["cv_frame_groups"],
+                "holdout_by_composition": cv["cv_by_composition"],
+                "cv_folds": cv["cv_folds"], "cv_n_frames": cv["cv_n_frames"],
+                "cv_median_frame_error": cv["cv_median_frame_error"], "cv_fragile_frames": cv["cv_fragile_frames"],
+            })
+        if not task.get("keep_amat"):
+            (amat_dir / "A.txt").unlink(missing_ok=True)  # the design matrix is the big file; params/force/b stay
     except TimeoutError as exc:
         result.update({"status": "timeout", "error": str(exc)[-600:]})
     except Exception as exc:  # noqa: BLE001 - one bad point must not end the search
@@ -432,9 +628,10 @@ def md_cost(r: dict, density: float = DEFAULT_DENSITY) -> float:
 
     c = r["cfg"]
     sig = r.get("signal") or {}
-    n2 = sig.get("n_2b") or r["n_params"]
-    n3 = sig.get("n_3b") or 0
-    n4 = sig.get("n_4b") or 0
+    nz = r.get("nonzero")  # live coefficients: LASSO zeroes many, and deploy removes them before MD
+    n2 = (nz or {}).get("2b") or sig.get("n_2b") or r["n_params"]
+    n3 = (nz or {}).get("3b") if nz else (sig.get("n_3b") or 0)
+    n4 = (nz or {}).get("4b") if nz else (sig.get("n_4b") or 0)
 
     def neigh(rc):
         return density * 4.0 / 3.0 * math.pi * rc**3
@@ -487,7 +684,10 @@ def select(results: list, *, objective: str, energy_weight: float, tolerance: fl
 
     for r in ok:
         r["tie_margin"] = round(margin(r), 5)
-    within = [r for r in ok if r["score"] - best["score"] <= r["tie_margin"]]
+        r["group_regressions"] = group_regressions(r, best, tolerance) if r is not best else []
+    # a candidate is tied only if it is tied overall AND no composition group got worse beyond that group's
+    # own paired noise: a pooled score hid a 60% loss on pure Cu (0.09 -> 0.145) on Cu-Zr
+    within = [r for r in ok if r["score"] - best["score"] <= r["tie_margin"] and not r["group_regressions"]]
     for r in ok:
         r["md_cost"] = round(md_cost(r, density), 1)
     if prefer == "richer":

@@ -10,10 +10,10 @@ judgment calls for you (except `auto-build`, which is explicit about it).
 - One subcommand per stage. **`chimes-agent <stage> --describe` is the source
   of truth for a stage's inputs/outputs** — read it instead of guessing flags.
   Stages: `setup`, `doctor`, `study`, `usage`, `data-search`, `data-fetch`, `data-generate`,
-  `data-curate`, `fingerprint`, `dataset-select`, `qe-relabel`, `hyper-analyze`,
-  `hyper-search`, `fm-setup-gen`,
+  `data-curate`, `fingerprint`, `quests`, `dataset-select`, `qe-relabel`, `qe-converge`, `hyper-analyze`,
+  `hyper-search`, `learning-curve`, `fm-setup-gen`,
   `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `md-check`, `benchmark`, `deploy`, `study-report`, `submit`, `job-status`, `al-select`, `al-merge`, `al-run`.
+  `lammps-run`, `md-check`, `eos-check`, `benchmark`, `deploy`, `study-report`, `submit`, `job-status`, `al-select`, `al-batch`, `al-merge`, `al-status`, `committee`, `al-run`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -33,9 +33,20 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   Stages that submit nothing reject `--dry-run`. Caveat:
   `auto-build --dry-run` only previews the QE submission, not the rest of
   the pipeline.
+- Prefer `hyper-search --cv-folds 4` on datasets under ~500 frames: every
+  training frame is scored, the standard error drops ~2x, and model
+  variance shows up (holdout and CV disagreeing is a finding, not noise).
+  `search/HYPER_REPORT.md` is the search's own account; start reports from it.
+- Run `learning-curve` on the chosen basis before active learning: a
+  plateau means more of the same data will not help.
+- One active-learning round is: `md-check` → `al-batch` (close contacts +
+  QUESTS + fingerprint + committee, within a budget) → `qe-relabel` →
+  `al-merge` → refit (`fm-setup-gen --hyper-choice`) → `md-check` →
+  `al-status` for the verdict. QUESTS (`quests` stage) needs
+  `pip install -e ".[quests]"`.
 - After a submission, `chimes-agent job-status --work-dir <dir>` says
   whether it succeeded, failed (why, fix) or completed without results.
-- LAMMPS stages (`lammps-run`, `md-check`, `benchmark`) take element types
+- LAMMPS stages (`lammps-run`, `md-check`, `eos-check`, `benchmark`) take element types
   and masses from `params.txt`; pass `--masses` only to double-check.
   LAMMPS matches types by mass, so a mismatch is refused. A rounded mass
   silently gave a wrong energy before.
@@ -106,7 +117,7 @@ present, is under `chimes_papers/text/` (gitignored; build with
 - Units are fixed: energy kcal/mol, force hartree/bohr in training files.
   QE output (Ry, Ry/bohr) is converted by `qe-relabel --collect`.
 - Cutoff derivation (`auto-build`) supports **orthorhombic boxes only**.
-  LAMMPS stages (`lammps-run`, `md-check`, `benchmark`) handle triclinic
+  LAMMPS stages (`lammps-run`, `md-check`, `eos-check`, `benchmark`) handle triclinic
   cells and replicate cells thinner than 2× the cutoff (LAMMPS energies are
   wrong on them otherwise).
 - A PreToolUse hook (`.claude/hooks/approval_gate.py`) asks the user before

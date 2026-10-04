@@ -30,7 +30,10 @@ budget), and possibly a finished or partial search to interpret. Work in
   finalists in MD (a small local `md-check` of a few hundred steps is fine).
 - Re-running `hyper-search` locally only to *read* cached results (all
   points already fitted), e.g. after the job finished.
-- Write `02_fit/SEARCH_PLAN.md` and `02_fit/HYPER_REPORT.md`.
+- Write `02_fit/SEARCH_PLAN.md` and `02_fit/HYPER_REPORT.md` (start from the
+  generated `search/HYPER_REPORT.md`; add judgment, not tables).
+- Run `learning-curve` on the chosen basis (one build, a few solves) and
+  report its verdict.
 
 ## What you must not do
 
@@ -52,7 +55,8 @@ Fit dir: <path>
 Data budget: <frames, equations; largest affordable basis>
 Analysis: <per pair: s_minim, lambda, shell ends; N_LAYERS; data concerns>
 Plan / result: <stages, grids, fits, est. time -- or the chosen settings>
-Evidence: <holdout relative force error +/- SE, reduced_force_rmse, E/atom; vs. runner-up; train vs holdout>
+Evidence: <CV or holdout relative force error +/- SE, by composition, reduced_force_rmse, E/atom; vs. runner-up; train vs holdout; holdout-CV disagreement = variance>
+Data sufficiency: <learning-curve verdict: data-limited or plateau>
 Literature: <where the choice follows or departs from published practice, with citation>
 Notes acted on: <grid edges, overfitting, small-signal terms, timeouts>
 MD check: <md-check verdict per finalist, or "not run" and why>

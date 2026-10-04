@@ -66,13 +66,9 @@ def _elements_of(params_path) -> list:
 
 def zero_penalty_copy(params_path, out_path) -> Path:
     """Copy of params.txt with the pair penalty explicitly off (after FCUT TYPE, like al_driver's files)."""
-    lines = [ln for ln in Path(params_path).read_text().splitlines() if "PAIR CHEBYSHEV PENALTY" not in ln]
-    k = next((i for i, ln in enumerate(lines) if ln.startswith("FCUT TYPE:")), None)
-    if k is None:
-        raise ValueError(f"{params_path}: no 'FCUT TYPE:' line to anchor the penalty settings")
-    lines[k + 1:k + 1] = ["", "PAIR CHEBYSHEV PENALTY DIST:    0.0", "PAIR CHEBYSHEV PENALTY SCALING: 0.0"]
-    Path(out_path).write_text("\n".join(lines) + "\n")
-    return Path(out_path)
+    from ..io.params import set_penalty
+
+    return set_penalty(params_path, out_path, dist=0.0, scaling=0.0)
 
 
 def subtract(frames, element_params: list, work: Path) -> tuple:

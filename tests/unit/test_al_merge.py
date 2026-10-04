@@ -10,10 +10,18 @@ from agentic_chimes.io import xyzf as xyzf_io
 from agentic_chimes.stages import al_merge, fm_setup_gen
 
 
+_COUNTER = [0]
+
+
 def _frames(n, energy=True, stress=True):
-    return [xyzf_io.Frame(symbols=["Cu", "Zr"], positions=[[0, 0, 0], [1.6, 1.6, 1.6]], forces=[[0, 0, 0]] * 2,
-                          box=[3.26] * 3, energy=-270.0 if energy else None,
-                          stress=[1, 1, 1, 0, 0, 0] if stress else None) for _ in range(n)]
+    out = []
+    for _ in range(n):
+        _COUNTER[0] += 1                      # distinct geometries: al-merge drops exact duplicates
+        d = 1.6 + 0.001 * _COUNTER[0]
+        out.append(xyzf_io.Frame(symbols=["Cu", "Zr"], positions=[[0, 0, 0], [d, d, d]], forces=[[0, 0, 0]] * 2,
+                                 box=[3.26] * 3, energy=-270.0 if energy else None,
+                                 stress=[1, 1, 1, 0, 0, 0] if stress else None))
+    return out
 
 
 def _prov(tmp, name, method="DFT-PBE", source="colabfit:x"):

@@ -107,7 +107,7 @@ def test_hyper_search_staging(tmp_path, monkeypatch):
     assert hp["order"]["2"] in (10, 12, 14) and hp["order"]["3"] == 6
     assert hp["special_maxim_3b"] == 5.0          # 5 and 6 tie within noise -> shorter cutoff
     assert "4" not in hp["order"]                  # 4-body adds nothing
-    assert hp["pair_cutoffs"]["Cu-Cu"][1] == 6.0
+    assert hp["pair_cutoffs"]["Cu-Cu"][1] in (5.5, 6.0)   # refine tries the 5.5 midpoint; it is tied and cheaper
     report = json.loads((tmp_path / "search" / "hyper_report.json").read_text())
     stages = [s["stage"] for s in report["stages"]]
     assert stages[:3] == ["2b", "3b", "4b"] and "lambda" in stages
@@ -311,3 +311,64 @@ def test_md_cost_uses_an_effective_per_pair_cutoff():
     fm = _hyper.build_fm_args({**pairs["cfg"], "elements": ["A", "B"], "order_2b": 8, "s_minim": {"A-A": 1, "A-B": 1, "B-B": 1},
                                "morse_lambda": {"A-A": 2, "A-B": 2, "B-B": 2}}, "t.xyzf", 1, task["masses"], 20.0, "out")
     assert fm.special_maxim_3b_pairs == {"A-A": 5.0, "A-B": 6.33, "B-B": 5.5}
+
+
+def test_group_regression_guard_blocks_a_tie_that_hurts_one_composition():
+    rows_best = [[1.0, 100.0, 6]] * 6 + [[4.0, 100.0, 6]] * 6          # Cu frames, then Cu-Zr frames
+    rows_worse_cu = [[2.6, 100.0, 6]] * 6 + [[3.9, 100.0, 6]] * 6      # Cu 60% worse, alloy unchanged
+    groups = ["Cu"] * 6 + ["Cu-Zr"] * 6
+    best = {"holdout_per_frame_force": rows_best, "holdout_frame_groups": groups}
+    cand = {"holdout_per_frame_force": rows_worse_cu, "holdout_frame_groups": groups}
+    reg = _hyper.group_regressions(cand, best, 0.03)
+    assert [r["group"] for r in reg] == ["Cu"]
+    assert _hyper.group_regressions(best, best, 0.03) == []
+
+
+def test_runner_shares_one_design_matrix_for_solve_variants(tmp_path, monkeypatch):
+    seen = []
+
+    def fake(task):
+        seen.append((task["cfg"].get("alpha"), task.get("amat_dir"), task.get("keep_amat")))
+        return {"key": _hyper.config_key(task["cfg"]), "cfg": task["cfg"], "status": "done"}
+
+    monkeypatch.setattr(_hyper, "run_point", fake)
+    r = hyper_search._Runner(tmp_path, {}, workers=1)
+    base = {"order_2b": 8, "s_maxim_2b": 6.0}
+    res = r.fit([{**base, "alpha": a} for a in (1e-6, 1e-5, 1e-4)], share_amat=True)
+    assert len(res) == 3 and len({d for _, d, _ in seen}) == 1 and all(k for _, _, k in seen)
+    assert hyper_search.fit_memory(1000, 100) > 8 * 1000 * 100
+
+
+
+def test_cv_assignment_is_stratified_and_protects_closest_contacts():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    frames = []
+    for k in range(12):            # 12 independent Cu frames, 6 independent Zr frames
+        pos = rng.uniform(0, 8, size=(8, 3))
+        frames.append(xyzf_io.Frame(symbols=["Cu"] * 8, positions=pos.tolist(), forces=[[0, 0, 0]] * 8, box=[8.0] * 3))
+    for k in range(6):
+        pos = rng.uniform(0, 8, size=(8, 3))
+        frames.append(xyzf_io.Frame(symbols=["Zr"] * 8, positions=pos.tolist(), forces=[[0, 0, 0]] * 8, box=[8.0] * 3))
+    a = _hyper.cv_assignment(frames, 3, seed=1)
+    assert len(a) == 18 and set(a) <= {-1, 0, 1, 2}
+    assert a.count(-1) >= 2                        # one closest-contact frame per element pair stays in training
+    cu = [f for f in a[:12] if f >= 0]
+    assert max(cu.count(k) for k in range(3)) - min(cu.count(k) for k in range(3)) <= 1   # stratified within Cu
+
+
+def test_profiles_and_scaled_lambdas():
+    final = {"order_2b": 8, "s_maxim_2b": 6.0, "order_3b": 4, "s_maxim_3b": 5.0, "lambda_scale": 1.0,
+             "morse_lambda": {"A-A": 2.0, "A-B": 3.0}, "lambda_scale_pairs": {"A-B": 1.1}}
+    assert _hyper.scaled_lambdas(final) == {"A-A": 2.0, "A-B": 3.3}
+    pts = {}
+    for o in (6, 8, 10):
+        c = {**final, "order_2b": o}
+        pts[str(o)] = {"status": "done", "cfg": c, "score": 0.5 + 0.01 * abs(o - 8), "n_params": 3 * o,
+                       "holdout_relative_force_error": 0.4, "holdout_rmse_energy_per_atom": 0.1, "md_cost": 10.0 * o}
+    pts["other"] = {"status": "done", "cfg": {**final, "order_2b": 6, "s_maxim_2b": 7.0}, "score": 1, "n_params": 1,
+                    "holdout_relative_force_error": 1, "holdout_rmse_energy_per_atom": 1, "md_cost": 1}
+    prof = _hyper.profiles(pts, final)
+    assert [r["value"] for r in prof["order_2b"]] == [6, 8, 10] and [r["chosen"] for r in prof["order_2b"]] == [False, True, False]
+    assert "s_maxim_2b" not in prof   # the 7.0 point also differs in order_2b, so it is not a one-dimensional profile

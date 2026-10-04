@@ -90,6 +90,7 @@ def _load_gen_selections():
 def _predicted_energies_normed(frames, params_path) -> list:
     from . import evaluate as evaluate_stage  # reuse the ctypes wrapper loader/cell-vector helper
 
+    evaluate_stage.check_frames_against_models(frames, [params_path])
     wrapper = evaluate_stage._load_wrapper()
     ptr = wrapper.chimes_open_instance()
     wrapper.set_chimes_instance(ptr, small=False)

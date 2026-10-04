@@ -75,9 +75,15 @@ Bugs found along the way:
 - LAMMPS energies on thin cells;
 - failed stage runs blocking retries.
 
+Third pass (2026-10-03): cross-validated searches, learning curves, QUESTS
+coverage and selection, batch assembly and campaign status for active
+learning, QE convergence tests, triclinic QE inputs, plots and a fuller
+report. B5 was resolved by a history rewrite with the owner's approval.
+
 Still open:
 
-- B5 (history rewrite);
+- binary design-matrix storage and automatic DLARS routing (the solver is
+  in the vendored fork);
 - more data backends;
 - slimming `auto-build`;
 - the default smoothing, revisited on a larger dataset;

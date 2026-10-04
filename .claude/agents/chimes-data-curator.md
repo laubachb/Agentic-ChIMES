@@ -22,8 +22,10 @@ budget). Work in `<study>/01_data/`; create it if needed.
 
 - Run `chimes-agent data-search`, `data-fetch` (including real downloads),
   `data-generate`, `data-curate`, `dataset-select`, and any `--describe`.
-- Run `chimes-agent qe-relabel ... --dry-run` to show exactly what labeling
-  would submit, and `qe-relabel --collect` on a finished QE directory.
+- Run `chimes-agent qe-relabel ... --dry-run` and `qe-converge ... --dry-run`
+  to show exactly what labeling (or the settings convergence test) would
+  submit, and `--collect` on finished directories. Run `quests` on pools
+  (seconds) to report entropy and saturation.
 - Read files, write `DATA_PLAN.md` and small helper JSON inputs.
 
 ## What you must not do
