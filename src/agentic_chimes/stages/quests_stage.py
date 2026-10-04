@@ -174,6 +174,11 @@ def run(args) -> dict:
               "n_reference_environments": int(len(X)), "entropy": round(float(H), 4), "diversity": round(float(div), 4),
               "self_dH_quantiles": {q: round(float(np.percentile(dH_self, q)), 3) for q in (50, 90, 99)},
               "dh_threshold": round(thr, 3), "notes": []}
+    if getattr(args, "dh_threshold", None) is None and (len(ref_frames) < 10 or thr <= 0):
+        result["notes"].append(f"reference of {len(ref_frames)} frame(s): its 99th-percentile self-dH ({thr:.3f}) is not a "
+                               "reliable novelty threshold" + (" and is <= 0, so every candidate environment counts as novel"
+                                                                if thr <= 0 else "") + "; pass --dh-threshold (dH > 0 means "
+                               "an environment the reference lacks) or use a larger reference")
 
     if getattr(args, "entropy_curve", True) and len(ref_frames) >= 8:
         from .learning_curve import nested_subsets

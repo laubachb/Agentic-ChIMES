@@ -109,7 +109,8 @@ def collect(root: Path) -> dict:
     figures = []
     for key, src in (("evaluate", evaluate_dir), ("eos_check", study_stage.artifact(root, "eos_check")),
                      ("learning_curve", study_stage.artifact(root, "learning_curve")), ("quests", study_stage.artifact(root, "quests")),
-                     ("md_check", study_stage.artifact(root, "md_check")), ("al_status", study_stage.artifact(root, "al_status"))):
+                     ("md_check", study_stage.artifact(root, "md_check")), ("al_status", study_stage.artifact(root, "al_status")),
+                     ("fingerprint", study_stage.artifact(root, "fingerprint")), ("committee", study_stage.artifact(root, "committee"))):
         if not src:
             continue
         base = Path(src) if Path(src).is_dir() else Path(src).parent
@@ -271,7 +272,14 @@ def render(facts: dict) -> str:
         if fpv and fpv.get("sets"):
             L += [f"- cluster-graph fingerprint: D² = {_fmt(fpv['sets'].get('D2'), 1)} vs critical {_fmt(fpv['sets'].get('critical'), 1)} "
                   f"({'distinguishable' if fpv['sets'].get('distinguishable') else 'indistinguishable'}); "
-                  f"fraction novel {_fmt((fpv.get('novelty') or {}).get('fraction_novel'))}"]
+                  f"fraction novel {_fmt((fpv.get('novelty') or {}).get('fraction_novel'))}"
+                  + (f" (structure weight α = {fpv['structure_weight']:g})" if fpv.get("structure_weight") is not None else "")]
+            if fpv.get("by_structure_weight"):
+                L += ["", "  | structure weight α | D²/critical | fraction novel |", "  |---|---|---|"]
+                for k, row in fpv["by_structure_weight"].items():
+                    ratio = row.get("D2_over_critical")
+                    L += [f"  | {k} | {ratio:.1f} | {_fmt(row.get('fraction_novel'))} |" if ratio is not None else f"  | {k} | - | {_fmt(row.get('fraction_novel'))} |"]
+                L += [""] + [f"  {n}" for n in fpv.get("notes", []) if "separates" in n]
         if cm and cm.get("force_spread_kcal_mol_ang"):
             L += [f"- committee ({cm.get('n_models')} members): median force spread {_fmt(cm['force_spread_kcal_mol_ang'].get('median'))} "
                   f"kcal/mol/Å, max {_fmt(cm['force_spread_kcal_mol_ang'].get('max'))}"]

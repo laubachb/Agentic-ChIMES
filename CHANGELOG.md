@@ -2,6 +2,19 @@
 
 ## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
 
+- **Element-aware fingerprints** (`fingerprint --structure-weight α`,
+  `--structure-weights` sweep, `--descriptor mass|number`; `al-batch
+  --structure-weight`): the paper's hybrid metric (α · structure +
+  (1 − α) · composition, centrality-ordered element descriptors for
+  triplets/quadruplets) implemented natively on top of the type-agnostic
+  fingerprint, which stays the default and still matches the shipped tool.
+  A sweep reports D²/critical per α and says whether composition or
+  structure separates two sets (the paper's alloy vs molecular regimes).
+- **Small-input guards**: `learning-curve` rejects fractions outside (0, 1]
+  before building anything; `quests` says when a reference is too small for
+  its self-dH threshold (and when that threshold is ≤ 0, so everything would
+  count as novel); `al-batch` notes a rank-deficient fingerprint reference
+  and a single-element composition term.
 - **Worker pools spawn instead of fork** (`io/pool.py`; `al-batch`, `fingerprint`,
   `md-check`, `hyper-search`). Forking after QUESTS started numba's threads
   deadlocked inside `fork()` on Dane compute nodes: three `al-batch` jobs wrote

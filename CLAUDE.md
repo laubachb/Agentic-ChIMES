@@ -43,7 +43,10 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   QUESTS + fingerprint + committee, within a budget) → `qe-relabel` →
   `al-merge` → refit (`fm-setup-gen --hyper-choice`) → `md-check` →
   `al-status` for the verdict. QUESTS (`quests` stage) needs
-  `pip install -e ".[quests]"`.
+  `pip install -e ".[quests]"`. For alloys give `al-batch`/`fingerprint`
+  `--structure-weight 0.25` (element-aware fingerprint); `fingerprint
+  --structure-weights 0,0.5,1` shows whether composition or structure
+  separates MD from training.
 - After a submission, `chimes-agent job-status --work-dir <dir>` says
   whether it succeeded, failed (why, fix) or completed without results.
 - LAMMPS stages (`lammps-run`, `md-check`, `eos-check`, `benchmark`) take element types

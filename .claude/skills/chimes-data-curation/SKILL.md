@@ -112,7 +112,9 @@ Write `01_data/DATA_PLAN.md` before fetching anything:
 - Coverage can be checked quantitatively with cluster-graph fingerprints
   (Laubach 2026 JCIM): `fingerprint --reference-xyzf <pool A>
   --candidates-xyzf <pool B>` gives D² between datasets and the novel
-  frames. It compares structure only, not chemical order.
+  frames. By default it compares structure only; `--structure-weight`
+  (0.25 for alloys) adds chemical order, and `--structure-weights 0,0.5,1`
+  diagnoses which matters for this chemistry.
 - Stresses are carried from open data (sign verified per dataset) and from
   QE. `fit_hints.fitstrs` is `ALL` when every frame has one.
 - Multi-fidelity: cheap DFTB exploration followed by DFT relabeling of the

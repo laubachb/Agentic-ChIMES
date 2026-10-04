@@ -224,10 +224,19 @@ Users can add their own PDFs to `chimes_papers/` and re-run the script
 - Uses: coverage checks for dataset curation, novelty detection for active
   learning, detecting equilibration, and the active-learning stopping
   criterion **[FP26]**.
-- Type-agnostic (structure only, as in the paper). The toolkit's
-  `fingerprint` stage reimplements the shipped tool natively
-  (`chimesFF/src/FP`): it matches the tool's reference output and needs no
-  special LAMMPS build.
+- Element awareness **[FP26 follow-up, Laubach et al., JCIM submitted]**:
+  one weight α ∈ [0, 1] mixes the normalized structural distance with a
+  compositional one (sorted element descriptors for pairs; centrality-
+  ordered for triplets/quadruplets) without enlarging the descriptor.
+  Finding: for metallic alloys composition resolves configurations that
+  structure treats as degenerate (α ≈ 0.25 selects data most efficiently,
+  composition-only is least reliable); for molecular systems geometry
+  already encodes chemistry and α hardly matters, except at dilute
+  compositions where composition-only sampling keeps rare environments.
+- The toolkit's `fingerprint` stage reimplements the shipped tool natively
+  (`chimesFF/src/FP`; type-agnostic by default, matching its reference
+  output) and adds the hybrid metric (`--structure-weight`,
+  `--structure-weights` sweep); `al-batch --structure-weight` uses it.
 
 ## ChIMES with DFTB
 

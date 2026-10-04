@@ -63,8 +63,10 @@ chimes-agent fingerprint --params <model>/params.txt --reference-xyzf 01_data/cu
 - Once DFT-MD and ChIMES-MD at a state point are indistinguishable,
   active learning has converged there (Laubach 2026).
 
-The fingerprint does not distinguish atom types (paper and shipped tool);
-for alloys it compares structure, not chemical order.
+By default the fingerprint does not distinguish atom types (shipped tool);
+for alloys add `--structure-weight 0.25` (element-aware metric) or sweep
+`--structure-weights 0,0.5,1` to see whether composition or structure
+separates MD from training.
 
 Also run the physics checks (local, seconds):
 

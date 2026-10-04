@@ -18,11 +18,28 @@ For one configuration:
    sqrt(12) + 1 and sqrt(24) + 1, as in the shipped tool. Concatenated,
    they are the fingerprint.
 
-This matches the shipped tool's output, including its (currently inactive)
-composition term: `gen_flat_hists` builds its type vectors with a size and
-then push_back()s onto them, so the composition weight it adds is always 0.
-The fingerprint is therefore type-agnostic, as the paper describes. Verified
-against `etc/lmp/tests/example-fingerprint/expected_output`.
+With `alpha=None` this matches the shipped tool's output (verified against
+`etc/lmp/tests/example-fingerprint/expected_output`), whose composition
+term is inactive: the fingerprint is type-agnostic and compares structure
+only.
+
+With `alpha` in [0, 1] the dissimilarity is the paper's element-aware
+hybrid (its Sec. "Formulation", and `chimesFF/src/FP/
+multi_calc_histogram_hybrid.cpp` in the Laubach fork):
+
+    D = alpha * D_struct / (2 sqrt(m)) + (1 - alpha) * D_comp / (t_max - t_min)
+
+where m is the number of edges, t an element descriptor (the mass column of
+params.txt unless a fifth TYPEIDX column gives one), and D_comp compares the
+clusters' element descriptors: for pairs, the mean absolute difference of
+the sorted descriptors; for triplets and quadruplets, the Euclidean distance
+(over sqrt n) between descriptors ordered by each atom's centrality, the
+edge-sum S_i over the sorted edges, so that the most central atom comes
+first. Both terms lie in [0, 1], so D does too and is histogrammed on [0, 1].
+alpha = 1 is structure only (normalized), alpha = 0 composition only. The
+paper finds alpha matters for metallic alloys, where composition resolves
+configurations structure treats as degenerate, and little for molecular
+systems whose geometry already encodes chemistry.
 
 Datasets are compared with the Mahalanobis distance of the paper:
 
@@ -52,13 +69,17 @@ class ModelCutoffs:
 
     def __init__(self, params_path):
         lines = Path(params_path).read_text().splitlines()
-        self.elements, self.pair = [], {}
+        self.elements, self.pair, self.masses, self.descriptor = [], {}, {}, {}
         i = next(k for k, ln in enumerate(lines) if "TYPEIDX" in ln)
         for ln in lines[i + 1:]:
             t = ln.split()
             if len(t) < 2 or not t[0].isdigit():
                 break
             self.elements.append(t[1])
+            if len(t) > 3:
+                self.masses[t[1]] = float(t[3])
+                # the fork's fingerprint build reads an optional fifth column as the element descriptor, else the mass
+                self.descriptor[t[1]] = float(t[4]) if len(t) > 4 else float(t[3])
         i = next(k for k, ln in enumerate(lines) if "PAIRIDX" in ln)
         for ln in lines[i + 1:]:
             t = ln.split()
@@ -139,7 +160,14 @@ def _atoms(frame):
 
 def clusters(frame, model: ModelCutoffs, orders=(2, 3, 4)) -> dict:
     """{order: array (n_clusters, n_edges) of sorted transformed edge lengths}
-    for every unique periodic cluster with all edges inside the outer cutoffs.
+    for every unique periodic cluster with all edges inside the outer cutoffs."""
+    return {o: e for o, (e, _) in typed_clusters(frame, model, orders).items()}
+
+
+def typed_clusters(frame, model: ModelCutoffs, orders=(2, 3, 4)) -> dict:
+    """{order: (edges, types)}: the sorted transformed edge lengths of every
+    unique periodic cluster with all edges inside the outer cutoffs, and the
+    element symbols of its members in cluster order (anchor first).
 
     Vectorized: each atom anchors the clusters it belongs to (neighbor lists
     with image shifts), edges are filtered with per-type cutoffs, and the
@@ -159,7 +187,7 @@ def clusters(frame, model: ModelCutoffs, orders=(2, 3, 4)) -> dict:
         npair = order * (order - 1) // 2
         pairs = list(combinations(range(order), 2))
         table = {}
-        edge_rows, key_rows = [], []
+        edge_rows, key_rows, type_rows = [], [], []
         for i in range(n):
             sl = slice(starts[i], starts[i + 1])
             d_i = np.linalg.norm(DD[sl], axis=1)
@@ -206,13 +234,13 @@ def clusters(frame, model: ModelCutoffs, orders=(2, 3, 4)) -> dict:
                 ok[sel] = inside
             if not ok.any():
                 continue
-            A, S, E = A[ok], S[ok], E[ok]
+            A, S, E, T = A[ok], S[ok], E[ok], T[ok]
             # distinct members only (a small cell can bring the same image twice)
             key = A * 1_000_000 + (S[..., 0] + 50) * 10_000 + (S[..., 1] + 50) * 100 + (S[..., 2] + 50)
             distinct = np.array([len(set(r)) == order for r in key.tolist()]) if order > 2 else A[:, 0] * 0 == 0
             if order == 2:
                 distinct = ~((A[:, 0] == A[:, 1]) & np.all(S[:, 1] == 0, axis=1))
-            A, S, E = A[distinct], S[distinct], E[distinct]
+            A, S, E, T = A[distinct], S[distinct], E[distinct], T[distinct]
             # canonical form: shift so the lowest-(atom, shift) member sits in the home cell, then sort members
             k0 = A * 1_000_000 + (S[..., 0] + 50) * 10_000 + (S[..., 1] + 50) * 100 + (S[..., 2] + 50)
             anchor = np.argmin(k0, axis=1)
@@ -220,31 +248,79 @@ def clusters(frame, model: ModelCutoffs, orders=(2, 3, 4)) -> dict:
             kc = np.sort(A * 1_000_000 + (S[..., 0] + 50) * 10_000 + (S[..., 1] + 50) * 100 + (S[..., 2] + 50), axis=1)
             key_rows.append(kc)
             edge_rows.append(np.sort(E, axis=1))
+            type_rows.append(T)
         if key_rows:
             keys = np.vstack(key_rows)
-            edges = np.vstack(edge_rows)
+            edges, tys = np.vstack(edge_rows), np.vstack(type_rows)
             _, first = np.unique(keys, axis=0, return_index=True)
-            out[order] = edges[np.sort(first)]
+            first = np.sort(first)
+            out[order] = (edges[first], np.array(model.elements, dtype=object)[tys[first]])
         else:
-            out[order] = np.empty((0, npair))
+            out[order] = (np.empty((0, npair)), np.empty((0, order), dtype=object))
     return out
 
 
-def histogram(edges: np.ndarray, order: int, *, max_clusters: int | None = 20000, seed: int = 0) -> tuple:
+_PAIRS = {o: list(combinations(range(o), 2)) for o in (2, 3, 4)}
+
+
+def composition_descriptors(edges: np.ndarray, types: np.ndarray, order: int, descriptor: dict) -> np.ndarray:
+    """Per-cluster element-descriptor vectors (n, order) of the paper's hybrid
+    metric: sorted for pairs; for triplets and quadruplets ordered by
+    centrality, the edge-sum S_i over the *sorted* edges read with the
+    canonical pair labels (1-2, 1-3, ..., as the reference tool does), most
+    central first. Ties keep cluster order."""
+    t = np.vectorize(descriptor.__getitem__, otypes=[float])(types) if len(types) else np.empty((0, order))
+    if order == 2:
+        return np.sort(t, axis=1)
+    M = np.zeros((order, len(_PAIRS[order])))
+    for k, (a, b) in enumerate(_PAIRS[order]):
+        M[a, k] = M[b, k] = 1.0
+    S = edges @ M.T
+    perm = np.argsort(S, axis=1, kind="stable")
+    return np.take_along_axis(t, perm, axis=1)
+
+
+def _pairwise(a, b, order, alpha, da, db, trange):
+    """Hybrid dissimilarities between clusters a (p, m) and b (q, m)."""
+    ds = np.sqrt(((a[:, None, :] - b[None, :, :]) ** 2).sum(-1))
+    if alpha is None:
+        return ds
+    ds /= 2.0 * math.sqrt(a.shape[1])
+    if trange <= 1e-10:
+        return alpha * ds
+    if order == 2:
+        dc = np.abs(da[:, None, :] - db[None, :, :]).sum(-1) / order
+    else:
+        dc = np.sqrt(((da[:, None, :] - db[None, :, :]) ** 2).sum(-1)) / math.sqrt(order)
+    return alpha * ds + (1.0 - alpha) * dc / trange
+
+
+def histogram(edges: np.ndarray, order: int, *, max_clusters: int | None = 20000, seed: int = 0,
+              types: np.ndarray | None = None, alpha: float | None = None, descriptor: dict | None = None) -> tuple:
     """(normalized histogram over NBINS bins, n_clusters used) of all pairwise
     dissimilarities within one body order. Above max_clusters, a uniform
-    random subset is used (the histogram is an estimate)."""
+    random subset is used (the histogram is an estimate).
+
+    alpha=None: structure only on [0, DMAX[order]] (the shipped tool).
+    alpha in [0, 1]: the paper's hybrid metric on [0, 1]; needs `types`
+    (from typed_clusters) and `descriptor` {element: value}."""
     n = len(edges)
+    if alpha is not None and (types is None or descriptor is None):
+        raise ValueError("the hybrid fingerprint needs cluster types and an element descriptor")
     if max_clusters and n > max_clusters:
-        edges = edges[np.random.default_rng(seed).choice(n, max_clusters, replace=False)]
+        pick = np.random.default_rng(seed).choice(n, max_clusters, replace=False)
+        edges = edges[pick]
+        types = types[pick] if types is not None else None
         n = max_clusters
-    dmax = DMAX[order]
+    dmax = DMAX[order] if alpha is None else 1.0
+    trange = (max(descriptor.values()) - min(descriptor.values())) if alpha is not None else 0.0
+    desc = composition_descriptors(edges, types, order, descriptor) if alpha is not None else None
     binw = dmax / NBINS
     hist = np.zeros(NBINS, dtype=np.int64)
     for start in range(0, n - 1, 128):
-        a = edges[start:start + 128]
-        d = np.sqrt(((a[:, None, :] - edges[None, :, :]) ** 2).sum(-1))
-        rows, cols = np.nonzero(np.arange(start, start + len(a))[:, None] < np.arange(n)[None, :])
+        sl = slice(start, start + 128)
+        d = _pairwise(edges[sl], edges, order, alpha, desc[sl] if desc is not None else None, desc, trange)
+        rows, cols = np.nonzero(np.arange(start, start + d.shape[0])[:, None] < np.arange(n)[None, :])
         d = d[rows, cols]
         b = np.floor(d / binw).astype(int)
         b[d == dmax] -= 1
@@ -253,9 +329,11 @@ def histogram(edges: np.ndarray, order: int, *, max_clusters: int | None = 20000
     return (hist / total if total else hist.astype(float)), n
 
 
-def fingerprint(frame, model: ModelCutoffs, orders=(2, 3, 4), max_clusters=20000) -> np.ndarray:
-    cl = clusters(frame, model, orders)
-    return np.concatenate([histogram(cl[o], o, max_clusters=max_clusters)[0] for o in orders])
+def fingerprint(frame, model: ModelCutoffs, orders=(2, 3, 4), max_clusters=20000, alpha=None, descriptor=None) -> np.ndarray:
+    cl = typed_clusters(frame, model, orders)
+    descriptor = descriptor or model.descriptor
+    return np.concatenate([histogram(cl[o][0], o, max_clusters=max_clusters, types=cl[o][1], alpha=alpha,
+                                     descriptor=descriptor)[0] for o in orders])
 
 
 # ------------------------------------------------------------------ statistics

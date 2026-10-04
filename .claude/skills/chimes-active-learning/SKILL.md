@@ -15,7 +15,9 @@ One round, in `<study>/03_al/round<k>/`, each step a stage call:
 2. **Prioritize.** Run `al-batch --candidates-xyzf harvest.xyzf --train-xyzf
    <train> --params <model> --fm-setup-in <basis> --budget N`. It combines
    close contacts (first), QUESTS dH, fingerprint D_j² and committee spread,
-   drops duplicates, and writes `batch.xyzf` + `batch.json`. Run `quests`
+   drops duplicates, and writes `batch.xyzf` + `batch.json`. For alloys add
+   `--structure-weight 0.25` (element-aware fingerprint; see
+   `docs/commands/fingerprint.md`). Run `quests`
    on the harvest too (`round<k>/quests/`): `al-status` uses its novel
    fraction for the stopping rule. `al-select` (energy-histogram
    diversity) remains for very large pools.

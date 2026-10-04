@@ -54,6 +54,7 @@ SCHEMA = {
         "seed": {"type": "integer", "default": 0},
         "workers": {"type": "integer", "default": 0, "description": "Parallel fingerprint workers (default: all cores)."},
         "max_fingerprint_frames": {"type": "integer", "default": 40, "description": "Training frames used as the fingerprint reference (cluster enumeration is the slow part)."},
+        "structure_weight": {"type": ["number", "null"], "description": "Element-aware fingerprint (the paper's alpha; 0.25 suits alloys). Default: type-agnostic."},
     },
 }
 
@@ -72,6 +73,7 @@ def add_arguments(parser) -> None:
     parser.add_argument("--alpha", type=float, default=1e-5)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-fingerprint-frames", dest="max_fingerprint_frames", type=int, default=40)
+    parser.add_argument("--structure-weight", dest="structure_weight", type=float, default=None)
     parser.add_argument("--workers", type=int, default=0)
 
 
@@ -156,11 +158,20 @@ def run(args) -> dict:
             from .quests_stage import available_cpus
 
             workers = max(1, min(int(getattr(args, "workers", 0) or available_cpus()), 32))
-            tasks = [(train[i], params, orders, 1500) for i in ref_idx] + [(f, params, orders, 1500) for f in sub]
+            sw = [getattr(args, "structure_weight", None)]
+            tasks = [(train[i], params, orders, 1500, sw) for i in ref_idx] + [(f, params, orders, 1500, sw) for f in sub]
             with process_pool(min(workers, len(tasks))) as pool:
                 fps = [r[0] for r in pool.map(_one, tasks)]
             F_ref, F_c = np.array(fps[:len(ref_idx)]), np.array(fps[len(ref_idx):])
-            scores["fingerprint_Dj2"] = np.asarray(fp.novelty(F_ref, F_c)["Dj2"])
+            nov = fp.novelty(F_ref, F_c)
+            scores["fingerprint_Dj2"] = np.asarray(nov["Dj2"])
+            if nov["dof"] < 3:
+                notes.append(f"fingerprint reference covariance has rank {nov['dof']} ({len(ref_idx)} frames): D_j^2 ranks "
+                             "candidates but carries little information; give al-batch a larger training set")
+            if sw[0] is not None:
+                notes.append(f"fingerprint novelty uses the element-aware metric (structure weight {sw[0]:g})")
+                if len(set(model.descriptor.values())) < 2:
+                    notes.append("single element descriptor value: the composition term is zero and the metric is structure only")
             if len(ref_idx) < len(train):
                 notes.append(f"fingerprint reference subsampled to {len(ref_idx)} of {len(train)} training frames "
                              "(--max-fingerprint-frames); run the fingerprint stage with --machine for the full set")

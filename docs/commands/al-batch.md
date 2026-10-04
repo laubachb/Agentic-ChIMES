@@ -28,3 +28,12 @@ chimes-agent qe-relabel --structure-xyzf 03_al/round1/batch/batch.xyzf ... --out
 ```
 
 Missing tools are skipped with a note (`signals_used` says what counted).
+`--structure-weight 0.25` scores fingerprint novelty with the element-aware
+metric ([fingerprint](fingerprint.md)), the paper's choice for alloys. On
+the Cu-Zr harvest (46 candidates, budget 15) the two metrics rank
+candidates almost independently (Spearman 0.14 between their D_j²), yet 12
+of the 15 selected frames agree, because close contacts are taken first
+and the near-duplicate collapse leaves only 16 distinct candidates. The
+difference shows when the budget is smaller than the number of distinct,
+non-close-contact candidates. One node, 40 s with the full 126-frame
+reference (`--max-fingerprint-frames 126`).

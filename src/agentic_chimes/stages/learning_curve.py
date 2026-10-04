@@ -117,6 +117,8 @@ def run(args) -> dict:
     frames = xyzf_io.read_xyzf(train_path)[: int(setup.get("nframes") or 0) or None]
     holdout = xyzf_io.read_xyzf(args.holdout_xyzf)
     fractions = sorted(set(getattr(args, "fractions", None) or [0.125, 0.25, 0.5, 0.75, 1.0]))
+    if any(not 0.0 < f <= 1.0 for f in fractions):
+        raise ValueError(f"--fractions must lie in (0, 1]: got {fractions}")
     repeats = max(1, int(getattr(args, "repeats", 2) or 1))
     out = fs.ensure_dir(Path(getattr(args, "output_dir", None) or ".").resolve())
     amat = fs.ensure_dir(out / "amat")
