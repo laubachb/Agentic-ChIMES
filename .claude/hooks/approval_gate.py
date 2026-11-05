@@ -8,6 +8,7 @@ form (`python3 -m agentic_chimes.cli ...`) and a `--machine` hidden inside a
 returns "ask" for:
 
   - submit, al-run (except --status-of), auto-build, qe-relabel (except --collect)
+  - llm-serve (except --status/--stop/dry run), llm-download (except dry run)
   - any stage with a machine set (flag or JSON) that is not a dry run
   - benchmark --collect is local; hyper-search/solve/amat-build/model-build/
     sweep/benchmark with a machine are submissions
@@ -82,6 +83,11 @@ def reason_to_ask(command: str):
             return "qe-relabel submits QE labeling jobs"
         if stage == "al-run" and not (_flag(rest, "--status-of") or data.get("status_of")):
             return "al-run starts or stops a long-lived al_driver campaign"
+        if stage == "llm-serve" and not dry and not any(
+                _flag(rest, f) or data.get(f.lstrip("-")) for f in ("--status", "--stop")):
+            return "llm-serve starts a long-lived model server (login node, allocation or Slurm job)"
+        if stage == "llm-download" and not dry:
+            return "llm-download writes model weights (several GB) to disk"
         if machine and not dry and not (stage == "benchmark" and (_flag(rest, "--collect") or data.get("collect"))):
             src = "in " + json_in if not _flag(rest, "--machine") else "via --machine"
             return f"{stage} with a machine set ({src}) submits a Slurm job"

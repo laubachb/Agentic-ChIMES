@@ -28,6 +28,11 @@ filesystem:
   # write one file per frame/config at scale here.
   max_small_files_per_dir: 5000
   bulk_archive_root: /p/lustre3/${USER}
+# One batch-partition compute node, for sizing work such as `llm-recommend --for-machine`.
+node:
+  cores: 112
+  memory_gb: 256
+  gpus: 0
 qe:
   # QE has no LLNL-LC .mod file upstream; MPI/BLAS/LAPACK/FFTW come from the
   # same modules loaded above (mvapich2 provides MPI, intel-classic provides MKL).

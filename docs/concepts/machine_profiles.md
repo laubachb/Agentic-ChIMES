@@ -6,6 +6,7 @@ includes:
 - `setup`, `submit`, `qe-relabel`
 - `amat-build`, `solve` (DLARS), `model-build`, `sweep`
 - `hyper-search`, `md-check`, `benchmark`
+- `llm-serve` (a model server as a batch job)
 
 A profile is a small YAML file describing one cluster: its account,
 partitions, modules and defaults. Built-in profiles live in
@@ -64,6 +65,11 @@ filesystem:
   bulk_archive_root: /p/lustre3/${USER}
 qe:
   configure_extra_args: []     # extra flags for QE's ./configure at `chimes-agent setup`
+node:                          # optional: one compute node, for sizing (llm-recommend --for-machine, llm-serve threads)
+  cores: 112
+  memory_gb: 256
+  gpus: 0
+  # gpu_memory_gb: 80          # per GPU, on GPU partitions
 ```
 
 ## Adding a new machine

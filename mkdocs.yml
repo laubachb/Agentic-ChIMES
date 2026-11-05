@@ -72,6 +72,7 @@ nav:
       - Study layout and artifacts: guide/study_layout.md
       - The agents: guide/agents.md
       - Compute, approvals and costs: guide/compute.md
+      - Open-weight models (EZRA): guide/open_models.md
       - Troubleshooting: guide/troubleshooting.md
       - "Worked example: Cu-Zr": guide/example_cuzr.md
   - Commands:
@@ -122,6 +123,11 @@ nav:
           - doctor: commands/doctor.md
           - submit: commands/submit.md
           - job-status: commands/job-status.md
+      - Open-weight models:
+          - llm-recommend: commands/llm-recommend.md
+          - llm-download: commands/llm-download.md
+          - llm-agent: commands/llm-agent.md
+          - llm-serve: commands/llm-serve.md
   - Methods:
       - The workflow in pictures: concepts/workflow.md
       - The ChIMES model: concepts/chimes_model.md

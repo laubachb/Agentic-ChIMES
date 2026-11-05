@@ -22,5 +22,10 @@ filesystem:
   scratch_root: ${SCRATCH}
   max_small_files_per_dir: 5000
   bulk_archive_root: null
+# One SKX compute node, for sizing work such as `llm-recommend --for-machine`.
+node:
+  cores: 48
+  memory_gb: 192
+  gpus: 0
 qe:
   configure_extra_args: []

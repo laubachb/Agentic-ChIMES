@@ -115,6 +115,23 @@ Built while developing this toolkit (the full report is in the
   frames) is the limit, not the settings. The report says so and recommends
   active learning.
 
+## Running the agents on open-weight models
+
+No API access on the cluster, or want to keep everything in-house? The
+agents can run on an open model you serve yourself.
+[EZRA](https://github.com/Awwal41/EZRA) checks the hardware and downloads
+the weights; `chimes-agent` sizes the model to a node and starts the server
+on the login node, inside an `idev`/`salloc` allocation, or as an sbatch job:
+
+```bash
+chimes-agent llm-recommend --for-machine dane                       # what fits one compute node
+chimes-agent llm-download --model qwen2.5-14b-instruct --for-machine dane
+chimes-agent llm-serve --work-dir /p/lustre2/$USER/llm --model qwen2.5-14b-instruct --machine dane --dry-run
+chimes-agent llm-serve --status --work-dir /p/lustre2/$USER/llm     # endpoint + env for your agent harness
+```
+
+Details, engines and harness setup: [Open-weight models](docs/guide/open_models.md).
+
 ## Using the stages directly
 
 The agents are optional. Every stage runs by hand with the same contract:
@@ -141,6 +158,7 @@ A 5-minute, no-HPC example that fits a tiny model to a bundled fixture is in
 | Active learning | `al-batch`, `al-select`, `al-merge`, `al-status`, `al-run` |
 | MD, performance, deployment | `lammps-run`, `md-check`, `eos-check`, `committee`, `benchmark`, `deploy` |
 | Infrastructure | `setup`, `doctor`, `submit`, `job-status` |
+| Open-weight models | `llm-recommend`, `llm-download`, `llm-agent`, `llm-serve` |
 
 Reference for each: [docs/commands/](docs/commands/index.md).
 

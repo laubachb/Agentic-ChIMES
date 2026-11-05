@@ -47,6 +47,10 @@ contract every page below assumes.
 | [`al-batch`](al-batch.md) | **implemented** | One AL batch from close contacts + novelty (QUESTS, fingerprint) + committee, within a budget |
 | [`al-status`](al-status.md) | **implemented** | Per-round errors/stability/novelty across an AL campaign; CONVERGED/CONTINUE verdict |
 | [`committee`](committee.md) | **implemented** | Bootstrap committee of one basis; candidates ranked by model disagreement |
+| [`llm-recommend`](llm-recommend.md) | **implemented** (needs EZRA) | Hardware check + open-weight chat models that fit this host or a profile's compute node |
+| [`llm-download`](llm-download.md) | **implemented** (needs EZRA) | Download model weights onto shared scratch from the login node |
+| [`llm-agent`](llm-agent.md) | **implemented** (needs EZRA) | Install an EZRA agent profile (chimes prompt + models picked for the node) |
+| [`llm-serve`](llm-serve.md) | **implemented** | Serve a model with tool calling on a login node, in an idev/salloc allocation, or as a Slurm job |
 
 All stages are implemented.
 
