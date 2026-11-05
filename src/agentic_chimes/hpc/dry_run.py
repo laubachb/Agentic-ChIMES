@@ -15,6 +15,7 @@ import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 def hours_to_slurm_time(hours: float) -> str:
@@ -52,6 +53,7 @@ def render_sbatch_script(
     queue: str,
     job_mem_gb: int = 128,
     email: bool = False,
+    extra_directives: Optional[list] = None,
 ) -> RenderedJob:
     if not ntasks_per_node:
         raise ValueError(
@@ -78,6 +80,7 @@ def render_sbatch_script(
     sbatch_flags.append(f"-A {profile.account}")
     sbatch_flags.append("-V")
     sbatch_flags.append("-o stdoutmsg")
+    sbatch_flags.extend(extra_directives or [])
 
     directive = "#SBATCH" if profile.job_system in ("slurm", "conda-slurm", "TACC", "UM-ARC") else "#PBS"
     for flag in sbatch_flags:

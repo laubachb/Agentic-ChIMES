@@ -1,0 +1,28 @@
+# EZRA personal agent for Agentic ChIMES (https://github.com/Awwal41/EZRA, docs/agents.md).
+# `chimes-agent llm-agent` installs a copy with models.preferred / fallback
+# re-picked for your hardware; edit that copy, not this one.
+version: 1
+
+name: chimes-assistant
+description: >
+  Drives the chimes-agent CLI to build ChIMES machine-learned interatomic
+  potentials - data, fitting, validation, active learning, HPC jobs - on open models.
+
+models:
+  preferred:
+    - qwen3-30b-a3b-instruct-2507
+    - qwen2.5-14b-instruct-gguf
+  fallback:
+    - qwen2.5-7b-instruct
+    - qwen3-4b-instruct-2507
+  tags:
+    - instruct
+    - function-calling
+
+prompt: prompt.md
+
+science_focus:
+  - materials
+  - chemistry
+
+tools: []

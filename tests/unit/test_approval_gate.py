@@ -26,6 +26,9 @@ def test_asks_for_submissions_in_every_form(tmp_path):
         "chimes-agent auto-build --json-in whatever.json",
         "sbatch run.cmd",
         "chimes-agent submit --command 'echo hi'",
+        "chimes-agent llm-serve --work-dir w --model qwen2.5-7b-instruct",
+        "chimes-agent llm-serve --work-dir w --model m --machine dane",
+        "chimes-agent llm-download --model qwen2.5-7b-instruct",
     ]
     for cmd in ask:
         assert gate.reason_to_ask(cmd), cmd
@@ -43,6 +46,11 @@ def test_lets_local_and_dry_runs_through(tmp_path):
         "chimes-agent benchmark --collect bench --machine dane",
         "chimes-agent solve --describe",
         "ls -la && git status",
+        "chimes-agent llm-serve --status --work-dir w",
+        "chimes-agent llm-serve --stop --work-dir w",
+        "chimes-agent llm-serve --work-dir w --model m --machine dane --dry-run",
+        "chimes-agent llm-download --model m --dry-run",
+        "chimes-agent llm-recommend --for-machine dane",
     ]
     for cmd in ok:
         assert gate.reason_to_ask(cmd) is None, cmd

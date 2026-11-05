@@ -13,7 +13,8 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   `data-curate`, `fingerprint`, `quests`, `dataset-select`, `qe-relabel`, `qe-converge`, `hyper-analyze`,
   `hyper-search`, `learning-curve`, `fm-setup-gen`,
   `amat-build`, `solve`, `weights`, `hierarch`, `model-build`, `sweep`, `auto-build`, `evaluate`,
-  `lammps-run`, `md-check`, `eos-check`, `benchmark`, `deploy`, `study-report`, `submit`, `job-status`, `al-select`, `al-batch`, `al-merge`, `al-status`, `committee`, `al-run`.
+  `lammps-run`, `md-check`, `eos-check`, `benchmark`, `deploy`, `study-report`, `submit`, `job-status`, `al-select`, `al-batch`, `al-merge`, `al-status`, `committee`, `al-run`,
+  `llm-recommend`, `llm-download`, `llm-agent`, `llm-serve`.
 - **stdout is exactly one JSON object** (errors are `{"error", "log",
   "log_tail"}` with exit code 1). All native-library and subprocess noise is
   diverted to `<output-dir>/<stage>.log`, whose path comes back as
@@ -60,6 +61,13 @@ judgment calls for you (except `auto-build`, which is explicit about it).
   silently gave a wrong energy before.
 - `--json-in` refuses unknown keys and wrong types. If it errors, fix the
   key name; don't drop the setting.
+- Open-weight models instead of a hosted API go through EZRA:
+  `llm-recommend` (hardware → models that fit), `llm-download` (login
+  node, shared scratch), `llm-agent` (an EZRA agent profile: prompt +
+  models picked for the node), `llm-serve` (login node, inside an idev/salloc
+  allocation, or `--machine` batch job; `--status` gives the endpoint and
+  client environment, `--stop` ends it). `llm-download` blocks; run it in
+  the background. Load `chimes-open-models` first.
 
 ## Playbooks (skills)
 
@@ -74,6 +82,8 @@ Load the matching skill before starting that kind of task:
 - `chimes-auto-build` — unlabeled or labeled configs → one optimal model
 - `chimes-build-model` — stage-by-stage fitting, sweeps, reading results
 - `chimes-hpc-jobs` — anything that touches Slurm, QE, DLARS, or lustre
+- `chimes-open-models` — run the agents on an open-weight LLM (EZRA):
+  sizing, download, serving on a login node / allocation / batch job
 - `chimes-active-learning` — `al-select` / `al-run` / stabilizing a model
 - `chimes-md-validation` — MD checks of candidate models, fingerprint coverage, choosing between tied models
 - `chimes-literature` — published ChIMES methodology (cutoffs, λ, smoothing,

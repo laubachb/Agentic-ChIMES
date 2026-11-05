@@ -821,3 +821,86 @@ Reference: [al-run](al-run.md).
 | `--python-bin` | string |  | Override which python runs main.py; default sys.executable. |
 | `--status-of` | integer |  | PID to check instead of launching. |
 | `--stop` | integer |  | PID to SIGTERM instead of launching. |
+
+## `llm-recommend`
+
+Hardware check + open-weight chat models (EZRA gallery) that fit this host or a profile's compute node.
+
+Reference: [llm-recommend](llm-recommend.md).
+
+| option | type | default | description |
+|---|---|---|---|
+| `--keyword` | string |  | Only models whose name, tags or description contain this. |
+| `--for-machine` | string |  | Size for one compute node of this machine profile instead of this host. |
+| `--memory-gb` | number |  | Node RAM in GB (overrides the probe / profile). |
+| `--gpus` | integer |  | GPUs per node (overrides the probe / profile). |
+| `--gpu-memory-gb` | number |  | VRAM per GPU in GB (overrides the probe / profile). |
+| `--ctx-size` | integer | `32768` | Context the agent needs, in tokens; its KV cache counts against memory. |
+| `--limit` | integer | `5` |  |
+| `--include-gated` | flag | `False` | Include models that need an accepted Hugging Face license. |
+| `--ezra` | string |  | Path to the ezra executable (default: CHIMES_EZRA or PATH). |
+
+## `llm-download`
+
+Download open-weight LLM weights via EZRA onto shared storage (login node; --dry-run lists what would be fetched).
+
+Reference: [llm-download](llm-download.md).
+
+| option | type | default | description |
+|---|---|---|---|
+| `--model` | array |  | **required.** EZRA gallery names (see llm-recommend). |
+| `--models-dir` | string |  | Where weights go (EZRA_MODELS_DIR). Default: <profile scratch_root>/ezra/models with --for-machine, else EZRA's own default. |
+| `--for-machine` | string |  | Machine profile whose shared scratch holds the weights. |
+| `--quant` | string |  | GGUF quantization to prefer, e.g. Q4_K_M. |
+| `--ezra` | string |  | Path to the ezra executable (default: CHIMES_EZRA or PATH). |
+
+## `llm-agent`
+
+Install an EZRA agent profile (prompt + models picked for this host or a profile's node) for driving chimes-agent.
+
+Reference: [llm-agent](llm-agent.md).
+
+| option | type | default | description |
+|---|---|---|---|
+| `--name` | string | `chimes-assistant` | Agent name (EZRA naming: letters, digits, . _ -; optional local/ prefix). |
+| `--template` | string |  | Agent folder to copy (default: the shipped chimes-assistant). |
+| `--ezra-root` | string |  | EZRA_ROOT holding agents/ (default CHIMES_EZRA_ROOT or ~/.chimes-agent/ezra). |
+| `--for-machine` | string |  | Pick models for one compute node of this machine profile. |
+| `--models-dir` | string |  | Where llm-download put weights (default: profile scratch with --for-machine). |
+| `--memory-gb` | number |  |  |
+| `--gpus` | integer |  |  |
+| `--gpu-memory-gb` | number |  |  |
+| `--ctx-size` | integer | `32768` |  |
+| `--keep-models` | flag | `False` | Keep the template's model lists instead of re-picking. |
+| `--replace` | flag | `False` | Overwrite an existing agent folder of that name. |
+| `--ezra` | string |  |  |
+
+## `llm-serve`
+
+Serve an open-weight LLM (llama-server / vllm / ezra) on a login node, in an idev/salloc allocation, or as an sbatch job.
+
+Reference: [llm-serve](llm-serve.md).
+
+| option | type | default | description |
+|---|---|---|---|
+| `--work-dir` | string |  | Directory for serve.sh, api_key, endpoint.json and server.log (shared filesystem for batch). |
+| `--model` | string |  | EZRA gallery name (downloaded with llm-download); also the served model id. |
+| `--model-path` | string |  | A .gguf file or Hugging Face model directory, instead of a gallery name. |
+| `--agent` | string |  | EZRA agent (from llm-agent): serve its first downloaded preferred/fallback model; the ezra engine also applies its prompt. |
+| `--ezra-root` | string |  | EZRA_ROOT holding agents/ (default CHIMES_EZRA_ROOT or ~/.chimes-agent/ezra). |
+| `--models-dir` | string |  | EZRA_MODELS_DIR the weights were downloaded to. |
+| `--where` | one of `auto`, `login`, `allocation`, `batch` | `auto` | auto: batch with --machine, allocation inside a Slurm job, else login. |
+| `--machine` | string |  | Machine profile for --where batch. |
+| `--queue` | string | `batch` |  |
+| `--walltime-hours` | number | `4.0` |  |
+| `--engine` | one of `auto`, `llama-server`, `vllm`, `ezra` | `auto` |  |
+| `--engine-bin` | string |  | Path to the engine executable when it is not on PATH. |
+| `--gpus` | integer |  | GPUs to use (batch: requested with --gres). |
+| `--threads` | integer |  | CPU threads for llama-server (default: login 4, else the node's cores). |
+| `--ctx-size` | integer | `32768` |  |
+| `--port` | integer | `0` | 0 picks a free port when the server starts. |
+| `--quant` | string |  | Pick the GGUF file whose name contains this, e.g. Q4_K_M. |
+| `--tool-call-parser` | string | `hermes` | vllm tool-call parser for the model family (hermes suits Qwen2.5). |
+| `--ezra` | string |  |  |
+| `--status` | flag | `False` | Report on the server in work_dir instead of launching. |
+| `--stop` | flag | `False` | Stop the server in work_dir instead of launching. |

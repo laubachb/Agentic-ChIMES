@@ -54,7 +54,7 @@ chimes-agent = "agentic_chimes.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"agentic_chimes" = ["schemas/*.json", "machines/profiles/*.yaml"]
+"agentic_chimes" = ["schemas/*.json", "machines/profiles/*.yaml", "ezra_agents/*/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]

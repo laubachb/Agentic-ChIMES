@@ -36,6 +36,7 @@ class MachineProfile:
     conda_env: Optional[str] = None
     filesystem: dict = field(default_factory=dict)
     qe: dict = field(default_factory=dict)
+    node: dict = field(default_factory=dict)
     source_path: Optional[Path] = None
 
     def queue_for(self, queue: str) -> str:
@@ -88,6 +89,7 @@ def _load_yaml(path: Path) -> MachineProfile:
         conda_env=data.get("conda_env"),
         filesystem=dict(data.get("filesystem", {})),
         qe=dict(data.get("qe", {})),
+        node=dict(data.get("node") or {}),
         source_path=path,
     )
 

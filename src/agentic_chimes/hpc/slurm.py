@@ -81,6 +81,7 @@ def submit_job(
     email: bool = False,
     dry_run: bool = False,
     expect: Optional[list] = None,
+    extra_directives: Optional[list] = None,
 ) -> JobHandle:
     """Submit (or, with dry_run=True, just render) a Slurm job on `profile`.
 
@@ -110,6 +111,7 @@ def submit_job(
         walltime_hours=walltime_hours,
         queue=queue,
         email=email,
+        extra_directives=extra_directives,
     )
     job_file_path.write_text(rendered.script)
     if dry_run:

@@ -66,6 +66,10 @@ STAGE_MODULE_NAMES = [
     "al_status",
     "committee",
     "al_run",
+    "llm_recommend",
+    "llm_download",
+    "llm_agent",
+    "llm_serve",
 ]
 
 

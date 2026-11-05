@@ -2,6 +2,26 @@
 
 ## Unreleased — sweep detail, reporting, QUESTS, active-learning tooling
 
+- **Open-weight models through EZRA**: three stages run the agents on a
+  self-hosted LLM. `llm-recommend` probes the host through
+  [EZRA](https://github.com/Awwal41/EZRA) (or reads a profile's new
+  optional `node:` block with `--for-machine`) and ranks gallery chat
+  models whose weights plus a 32k-token KV cache fit; login nodes are
+  capped at 8 GB. `llm-download` fetches weights onto the profile's shared
+  scratch from the login node. `llm-serve` starts `llama-server` (GGUF) or
+  `vllm` (safetensors) with tool calling on the login node, inside an
+  `idev`/`salloc` allocation, or as a batch job (`--machine`, `--gpus`),
+  behind a per-server API key; `--status` returns the endpoint and the
+  `OPENAI_*`/`ANTHROPIC_*` client settings, `--stop` ends it. EZRA is
+  called as an external CLI (it is GPL-3.0 and needs Python >= 3.10). The
+  approval hook asks before a real download or server launch; the
+  `chimes-open-models` skill is the playbook. `submit_job` and the sbatch
+  renderer accept `extra_directives` (used for `--gres`). `llm-agent`
+  installs `chimes-assistant`, an EZRA personal agent (`agent.yaml`,
+  `prompt.md` condensed from CLAUDE.md, `NOTES.md`) with preferred /
+  fallback models re-picked for the node, under its own `EZRA_ROOT`;
+  `llm-serve --agent` serves from that list, and `--status` adds the
+  `cline auth` line. Models tagged `function-calling` rank higher.
 - **Methods pages with equations, diagrams and figures**: the workflow in
   pictures (Mermaid), the ChIMES model (expansion, transform, smoothing,
   penalty, fit), data selection and coverage (QUESTS entropy and δH,
